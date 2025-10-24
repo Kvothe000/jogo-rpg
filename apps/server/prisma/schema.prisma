@@ -1,0 +1,317 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------
+// MODELOS DE CONTA (AUTH)
+// ----------------------------------------
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  
+  character   Character? // Relação 1-para-1 com o personagem
+}
+
+model Character {
+  id           String    @id @default(cuid())
+  name         String    @unique
+  createdAt    DateTime  @default(now())
+
+  // --- Atributos Principais ---
+  level        Int       @default(1)
+  xp           BigInt    @default(0) // BigInt para números grandes
+  gold         Int       @default(100)
+  
+  // --- Status da Lore (Renegado) ---
+  status       CharacterStatus @default(LOCKED) // O status da "Maldição"
+
+  // --- Atributos de Combate ---
+  hp           Int       @default(100)
+  maxHp        Int       @default(100)
+  eco          Int       @default(50) // "Eco" é a nossa mana
+  maxEco       Int       @default(50)
+
+  // --- Atributos Base ---
+  strength     Int       @default(5) // Força
+  dexterity    Int       @default(5) // Destreza
+  intelligence Int       @default(5) // Inteligência (afeta o Eco)
+  constitution Int       @default(5) // Vitalidade (afeta o HP)
+
+  // --- Localização no Mundo ---
+  // O 'mapId' nos diz em qual sala o jogador está
+  mapId        String
+  map          GameMap   @relation(fields: [mapId], references: [id])
+
+  // --- Relacionamentos ---
+  user          User     @relation(fields: [userId], references: [id])
+  userId        String   @unique // Garante 1-para-1
+
+  inventory     InventorySlot[]         // O inventário do jogador
+  reputations   Reputation[]            // As reputações com facções
+  powerKeywords CharacterPowerKeyword[] // Os "Ecos" que o jogador despertou
+  skills        CharacterSkill[]        // As habilidades que o jogador aprendeu
+  activeQuests  CharacterQuest[]        // As quests que o jogador está fazendo
+}
+
+// ----------------------------------------
+// MODELOS DO MUNDO (MAPA, NPCS)
+// ----------------------------------------
+
+model GameMap {
+  id          String   @id @default(cuid())
+  name        String   // Nome da sala (ex: "Praça da Cidadela")
+  description String   @db.Text // Descrição longa que o jogador vê
+  
+  // Saídas para outras salas. JSON é flexível.
+  // Ex: { "norte": "cuid_da_sala_norte", "loja": "cuid_da_loja" }
+  exits       Json     @default("{}")
+
+  // --- Relacionamentos ---
+  characters  Character[]   // Lista de Personagens atualmente nesta sala
+  npcInstances NPCInstance[] // Lista de NPCs atualmente nesta sala
+}
+
+model NPCTemplate {
+  id          String   @id @default(cuid())
+  name        String   // Nome (ex: "Guarda da Cidadela", "Goblin")
+  description String   @db.Text
+  
+  isHostile   Boolean  @default(false) // É um monstro?
+  
+  // Stats, se for um monstro
+  // Ex: { "hp": 50, "attack": 5, "defense": 2 }
+  stats       Json     @default("{}")
+  
+  // Tabela de Loot
+  // Ex: { "drops": [ {"itemId": "cuid_da_pocao", "chance": 0.5} ] }
+  lootTable   Json     @default("{}")
+  
+  // --- Relacionamentos ---
+  instances     NPCInstance[] // Onde este template aparece no mundo
+  questStarts   Quest[]       @relation("StartNPC") // Quests que este NPC dá
+  questEnds     Quest[]       @relation("EndNPC")   // Quests que este NPC recebe
+}
+
+model NPCInstance {
+  id         String   @id @default(cuid())
+  
+  // --- Relacionamentos ---
+  templateId String
+  template   NPCTemplate @relation(fields: [templateId], references: [id])
+  
+  mapId      String
+  map        GameMap     @relation(fields: [mapId], references: [id])
+
+  // --- Estado Vivo ---
+  currentHp  Int? // Vida atual (se for hostil e estiver em combate)
+}
+
+// ----------------------------------------
+// MODELOS DE LORE E PROGRESSÃO
+// ----------------------------------------
+
+model Faction {
+  id          String   @id @default(cuid())
+  name        String   @unique // Ex: "Cidadela da Ordem", "Os Livres"
+  description String   @db.Text
+  
+  // --- Relacionamentos ---
+  reputations Reputation[]
+}
+
+model Reputation {
+  id        String   @id @default(cuid())
+  points    Int      @default(0)
+  
+  // --- Relacionamentos ---
+  characterId String
+  character   Character @relation(fields: [characterId], references: [id])
+  
+  factionId   String
+  faction     Faction   @relation(fields: [factionId], references: [id])
+
+  // Um personagem só pode ter um valor de reputação por facção
+  @@unique([characterId, factionId])
+}
+
+// Nossos "Conceitos" de Eco (ex: Fogo, Lâmina, Cura)
+model PowerKeyword {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String   @db.Text
+  
+  // --- Relacionamentos ---
+  characters CharacterPowerKeyword[]
+  skills     Skill[] // Habilidades que REQUEREM este keyword
+}
+
+// Tabela-ponte para quais Ecos o personagem despertou
+model CharacterPowerKeyword {
+  id             String   @id @default(cuid())
+  
+  // --- Relacionamentos ---
+  characterId    String
+  character      Character    @relation(fields: [characterId], references: [id])
+  
+  powerKeywordId String
+  powerKeyword   PowerKeyword @relation(fields: [powerKeywordId], references: [id])
+  
+  @@unique([characterId, powerKeywordId])
+}
+
+// ----------------------------------------
+// MODELOS DE MECÂNICAS (ITENS, SKILLS, QUESTS)
+// ----------------------------------------
+
+model Item {
+  id           String    @id @default(cuid())
+  name         String    @unique
+  description  String    @db.Text
+  
+  type         ItemType  // É equipamento, consumível, etc?
+  slot         EquipSlot? // Se for equipamento, onde vai? (WEAPON, ARMOR)
+  
+  // Stats que o item dá
+  // Ex: { "attack": 5, "maxHp": 20 }
+  stats        Json      @default("{}")
+  
+  price        Int?      // Preço na loja (se for nulo, não pode ser vendido)
+  
+  // --- Relacionamentos ---
+  inventorySlots InventorySlot[]
+}
+
+// Uma "pilha" de itens no inventário do personagem
+model InventorySlot {
+  id           String    @id @default(cuid())
+  quantity     Int       @default(1)
+  isEquipped   Boolean   @default(false)
+  
+  // --- Relacionamentos ---
+  characterId  String
+  character    Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  
+  itemId       String
+  item         Item      @relation(fields: [itemId], references: [id])
+}
+
+model Skill {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  description String    @db.Text
+  
+  ecoCost     Int       @default(10)
+  
+  // Efeitos da skill
+  // Ex: { "damage": 20, "type": "fire", "statusEffect": "burning" }
+  effectData  Json      @default("{}")
+  
+  // --- Relacionamentos ---
+  // Habilidades que o personagem aprendeu
+  characters  CharacterSkill[]
+  
+  // Quais Ecos são necessários para aprender esta skill? (Muitos-para-Muitos)
+  requiredKeywords PowerKeyword[]
+}
+
+// Tabela-ponte para quais skills o personagem aprendeu
+model CharacterSkill {
+  id          String   @id @default(cuid())
+  level       Int      @default(1) // Skills podem ter níveis
+  
+  // --- Relacionamentos ---
+  characterId String
+  character   Character @relation(fields: [characterId], references: [id])
+  
+  skillId     String
+  skill       Skill     @relation(fields: [skillId], references: [id])
+  
+  @@unique([characterId, skillId])
+}
+
+model Quest {
+  id          String   @id @default(cuid())
+  title       String
+  description String   @db.Text
+  
+  // Requerimentos
+  requiredLevel Int      @default(1)
+  requiredQuestId String?  // ID da quest que precisa ser completada antes
+  
+  // Objetivos (flexível com JSON)
+  // Ex: { "kill": {"npcTemplateId": 5, "count": 10}, "fetch": {"itemId": 2, "count": 5} }
+  objectives  Json
+  
+  // Recompensas (flexível com JSON)
+  // Ex: { "xp": 100, "gold": 50, "itemId": 3 }
+  rewards     Json
+
+  // --- Relacionamentos ---
+  startNpcId  String
+  startNpc    NPCTemplate @relation("StartNPC", fields: [startNpcId], references: [id])
+  
+  endNpcId    String
+  endNpc      NPCTemplate @relation("EndNPC", fields: [endNpcId], references: [id])
+  
+  characters  CharacterQuest[]
+}
+
+// Tabela-ponte para o progresso da quest do personagem
+model CharacterQuest {
+  id          String   @id @default(cuid())
+  status      QuestStatus @default(ACTIVE)
+  
+  // Progresso (flexível com JSON)
+  // Ex: { "kill": 5, "fetch": 1 }
+  progress    Json
+  
+  // --- Relacionamentos ---
+  characterId String
+  character   Character @relation(fields: [characterId], references: [id])
+  
+  questId     String
+  quest       Quest     @relation(fields: [questId], references: [id])
+  
+  @@unique([characterId, questId])
+}
+
+// ----------------------------------------
+// ENUMS (Tipos customizados)
+// ----------------------------------------
+
+enum CharacterStatus {
+  LOCKED    // O estado "Maldição" inicial
+  AWAKENED  // O estado "Renegado" após a "Centelha"
+}
+
+enum ItemType {
+  EQUIPMENT  // Espada, Armadura
+  CONSUMABLE // Poção
+  QUEST_ITEM // Item de Quest
+  MATERIAL   // Item de Crafting
+}
+
+enum EquipSlot {
+  WEAPON
+  ARMOR
+  HELMET
+  BOOTS
+  ACCESSORY
+}
+
+enum QuestStatus {
+  LOCKED    // Ainda não pode pegar
+  ACTIVE    // Em andamento
+  COMPLETED // Concluída
+}
