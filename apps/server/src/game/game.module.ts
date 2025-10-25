@@ -3,12 +3,14 @@ import { GameGateway } from './game.gateway';
 import { AuthModule } from 'src/auth/auth.module';
 import { PrismaModule } from 'src/prisma/prisma.module';
 import { BattleModule } from 'src/battle/battle.module';
+import { InventoryModule } from 'src/inventory/inventory.module';
 
 @Module({
   imports: [
     AuthModule,
     PrismaModule,
-    forwardRef(() => BattleModule), // 2. USE forwardRef AQUI
+    forwardRef(() => BattleModule),
+    InventoryModule, // 2. USE forwardRef AQUI
   ],
   providers: [GameGateway],
   // exports: [GameGateway], // Mantenha comentado/removido

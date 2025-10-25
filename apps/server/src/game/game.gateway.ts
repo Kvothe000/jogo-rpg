@@ -18,6 +18,7 @@ import type { GameMap } from '@prisma/client';
 import { BattleService } from 'src/battle/battle.service';
 import { OnEvent } from '@nestjs/event-emitter';
 import { LootDropPayload } from 'src/game/types/socket-with-auth.type';
+import { InventoryService } from 'src/inventory/inventory.service';
 
 @WebSocketGateway({
   cors: {
@@ -35,6 +36,7 @@ export class GameGateway
     private jwtService: JwtService,
     private prisma: PrismaService,
     private battleService: BattleService,
+    private inventoryService: InventoryService,
   ) {
     const secret = process.env.JWT_SECRET;
     if (!secret) {
@@ -318,5 +320,24 @@ export class GameGateway
         npcs: npcsInRoom,
       });
     }
+  }
+  // --- NOVO OUVINTE PARA PEDIDO DE INVENTÁRIO ---
+  @SubscribeMessage('requestInventory')
+  async handleRequestInventory(@ConnectedSocket() client: SocketWithAuth) {
+    const characterId = client.data.user?.character?.id;
+    if (!characterId) {
+      client.emit('serverMessage', 'Erro: Personagem não encontrado.');
+      return;
+    }
+
+    console.log(`[GameGateway] Recebido requestInventory de ${characterId}`); // Log
+
+    const inventorySlots =
+      await this.inventoryService.getInventory(characterId);
+
+    client.emit('updateInventory', { slots: inventorySlots });
+    console.log(
+      `[GameGateway] Emitido updateInventory para ${characterId} com ${inventorySlots.length} slots.`,
+    ); // Log
   }
 }

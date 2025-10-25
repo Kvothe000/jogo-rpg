@@ -6,6 +6,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { GameModule } from './game/game.module';
 import { BattleModule } from './battle/battle.module';
 import { EventEmitterModule } from '@nestjs/event-emitter'; // 1. IMPORTE
+import { InventoryModule } from './inventory/inventory.module';
 
 @Module({
   imports: [
@@ -13,7 +14,8 @@ import { EventEmitterModule } from '@nestjs/event-emitter'; // 1. IMPORTE
     PrismaModule,
     GameModule,
     BattleModule,
-    EventEmitterModule.forRoot(), // 2. ADICIONE AQUI
+    EventEmitterModule.forRoot(),
+    InventoryModule, // 2. ADICIONE AQUI
   ],
   controllers: [AppController],
   providers: [AppService],

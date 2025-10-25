@@ -1,6 +1,7 @@
 import { Socket } from 'socket.io';
 import type { UserPayload } from 'src/auth/types/user-payload.type';
 import { CombatUpdatePayload } from 'src/battle/types/combat.type';
+import { ItemType, EquipSlot } from '@prisma/client';
 
 // 1. Usamos 'Record<string, never>' para sermos explícitos
 interface ClientToServerEvents {
@@ -10,6 +11,7 @@ interface ClientToServerEvents {
   playerInteractNpc: (npcInstanceId: string) => void; // Jogador pede para "mover"
   startCombat: () => void;
   combatAttack: () => void;
+  requestInventory: () => void;
 }
 // 2. Usamos 'Record<string, never>'
 interface ServerToClientEvents {
@@ -37,6 +39,7 @@ interface ServerToClientEvents {
     newLevel?: number; // Opcional, se houver level up
   }) => void;
   lootReceived: (payload: { drops: LootDropPayload[] }) => void;
+  updateInventory: (payload: { slots: InventorySlotData[] }) => void;
 }
 
 // 3. Usamos 'Record<string, never>'
@@ -50,6 +53,18 @@ export interface LootDropPayload {
   itemId: string;
   itemName: string;
   quantity: number;
+}
+// NOVO: Tipo para os dados de um slot do inventário enviados ao cliente
+export interface InventorySlotData {
+  slotId: string; // ID do InventorySlot
+  itemId: string;
+  itemName: string;
+  itemDescription: string;
+  itemType: ItemType;
+  itemSlot: EquipSlot | null; // Onde equipa (se for equipamento)
+  quantity: number;
+  isEquipped: boolean;
+  // Futuro: itemStats: Record<string, number>;
 }
 
 // 5. O tipo final está correto

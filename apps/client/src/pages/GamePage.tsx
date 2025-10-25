@@ -2,6 +2,8 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../contexts/SocketContext';
 import { GameChat } from '../components/GameChat'; 
+import { InventoryDisplay } from '../components/InventoryDisplay';
+import type { LootDropPayload, InventorySlotData } from '../../../server/src/game/types/socket-with-auth.type'; // <-- ADICIONE/CORRIJA ESTA LINHA
 
 // Tipos necessários
 interface RoomData {
@@ -23,17 +25,14 @@ interface CombatUpdatePayload {
   isPlayerTurn: boolean;
 }
 
-interface LootDropPayload {
-  itemId: string;
-  itemName: string;
-  quantity: number;
-}
-
 export function GamePage() {
   const { user, logout, updateProfile } = useAuth();
   const { socket, isConnected } = useSocket();
   const [room, setRoom] = useState<RoomData | null>(null);
   const [combatData, setCombatData] = useState<CombatUpdatePayload | null>(null);
+  // NOVO ESTADO PARA O INVENTÁRIO
+  const [inventorySlots, setInventorySlots] = useState<InventorySlotData[]>([]);
+  const [showInventory, setShowInventory] = useState(false);
   
   // Refs para acessar valores atualizados nos listeners
   const userRef = useRef(user);
@@ -104,7 +103,7 @@ export function GamePage() {
       newTotalXp: string; 
       goldGained: number; 
       newLevel?: number;
-      newHp?: number; // Adicionado para receber HP atualizado se disponível
+      newHp?: number;
     }) => {
       const currentUser = userRef.current;
       const currentCombatData = combatDataRef.current;
@@ -138,6 +137,13 @@ export function GamePage() {
       }
     };
 
+    // NOVO OUVINTE para atualização do inventário
+    const handleUpdateInventory = (payload: { slots: InventorySlotData[] }) => {
+      console.log("Inventário recebido:", payload.slots);
+      setInventorySlots(payload.slots);
+      setShowInventory(true);
+    };
+
     // Liga os ouvintes
     socket.on('updateRoom', handleUpdateRoom);
     socket.on('npcDialogue', handleNpcDialogue);
@@ -147,6 +153,7 @@ export function GamePage() {
     socket.on('combatEnd', handleCombatEnd);
     socket.on('playerUpdated', handlePlayerUpdated);
     socket.on('lootReceived', handleLootReceived);
+    socket.on('updateInventory', handleUpdateInventory); // NOVO: Ouvinte de inventário
 
     // Pede os dados da sala apenas uma vez quando o socket conecta
     if (isConnected) {
@@ -165,8 +172,9 @@ export function GamePage() {
       socket.off('combatEnd', handleCombatEnd);
       socket.off('playerUpdated', handlePlayerUpdated);
       socket.off('lootReceived', handleLootReceived);
+      socket.off('updateInventory', handleUpdateInventory); // NOVO: Remove ouvinte de inventário
     };
-  }, [socket, isConnected]); // Apenas socket e isConnected como dependências
+  }, [socket, isConnected]);
 
   // --- FUNÇÕES DE AÇÃO ---
 
@@ -193,6 +201,14 @@ export function GamePage() {
       socket.emit('combatAttack');
     }
   }, [socket, combatData]);
+
+  // NOVA FUNÇÃO para pedir o inventário
+  const handleRequestInventory = useCallback(() => {
+    if (socket) {
+      console.log("Pedindo inventário...");
+      socket.emit('requestInventory');
+    }
+  }, [socket]);
 
   if (!room) {
     return <div>Carregando informações da sala...</div>;
@@ -319,7 +335,7 @@ export function GamePage() {
         )}
       </div>
 
-      {/* Coluna da Direita (Info do Jogador e Chat) */}
+      {/* Coluna da Direita (Info do Jogador, Chat e Inventário) */}
       <div style={{ width: '40%', border: '1px solid #ccc', padding: '15px' }}>
         <h3>{user?.character?.name} (Nível {user?.character?.level})</h3>
         <p>Status: {user?.character?.status === 'AWAKENED' ? 'Despertado' : 'Bloqueado'}</p>
@@ -332,6 +348,45 @@ export function GamePage() {
           <span style={{ color: 'green' }}> Ligado</span> : 
           <span style={{ color: 'red' }}> Desligado</span>}
         </p>
+        
+        {/* BOTÃO PARA ABRIR/PEDIR INVENTÁRIO */}
+        <div style={{ marginTop: '10px' }}>
+          <button 
+            onClick={handleRequestInventory} 
+            style={{ 
+              background: 'orange', 
+              border: 'none', 
+              padding: '8px 10px', 
+              cursor: 'pointer', 
+              marginRight: '5px' 
+            }}
+          >
+            🎒 Inventário
+          </button>
+          {/* Botão para fechar (opcional) */}
+          {showInventory && (
+            <button 
+              onClick={() => setShowInventory(false)} 
+              style={{ 
+                background: 'grey', 
+                color: 'white',
+                border: 'none',
+                padding: '8px 10px',
+                cursor: 'pointer'
+              }}
+            >
+              Fechar Inv.
+            </button>
+          )}
+        </div>
+
+        {/* RENDERIZAÇÃO CONDICIONAL DO INVENTÁRIO */}
+        {showInventory && (
+          <div style={{ marginTop: '15px' }}>
+            <InventoryDisplay slots={inventorySlots} />
+          </div>
+        )}
+
         <button onClick={logout} style={{ marginTop: '10px' }}>Sair</button>
         <hr style={{ margin: '20px 0' }}/>
         <GameChat />
