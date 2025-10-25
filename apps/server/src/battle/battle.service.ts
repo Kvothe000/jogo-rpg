@@ -1,23 +1,22 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import type { UserPayload } from 'src/auth/types/user-payload.type';
-import { GameGateway } from 'src/game/game.gateway';
 import { CombatInstance, CombatUpdatePayload } from './types/combat.type';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 @Injectable()
 export class BattleService {
   // Gerenciador de estado em memória (Mapeia CharacterId para CombatInstance)
   private activeCombats = new Map<string, CombatInstance>();
 
-  constructor(private prisma: PrismaService) {}
-
-  // Lidar com a dependência circular: GameGateway precisa do BattleService, e vice-versa
-  private gateway: GameGateway;
-  setGateway(gateway: GameGateway) {
-    this.gateway = gateway;
-  }
+  constructor(
+    private prisma: PrismaService,
+    private eventEmitter: EventEmitter2,
+  ) {}
 
   // --- LÓGICA DE DANO BASE (MVP) ---
 
@@ -148,26 +147,99 @@ export class BattleService {
     return this.getCombatUpdatePayload(combat, log);
   }
 
-  // --- FIM DE COMBATE ---
+  // --- LÓGICA DE VITÓRIA (NOVA) ---
+
+  private async handleCombatWin(
+    playerId: string,
+    combat: CombatInstance,
+    log: string[],
+  ): Promise<void> {
+    const char =
+      combat.playerHp > 0
+        ? await this.prisma.character.findUnique({ where: { id: playerId } })
+        : null;
+
+    if (!char) return; // Jogador não existe mais
+
+    // 1. Calcular Recompensas
+    const monsterStats = combat.monsterTemplate.stats as any;
+    const xpGanho = monsterStats.xp ?? 50;
+    const goldGanho = Math.floor(
+      Math.random() * (monsterStats.goldMax - monsterStats.goldMin + 1) +
+        monsterStats.goldMin,
+    );
+
+    // 2. Tentar Level Up (usando BigInt para XP)
+    const novoXp = char.xp + BigInt(xpGanho);
+    let novoLevel = char.level;
+    const levelUpMessage: string[] = [];
+
+    // Lógica de Level Up (MVP: A cada 1000 XP)
+    const xpParaProximoLevel = char.level * 1000;
+
+    if (novoXp >= BigInt(xpParaProximoLevel)) {
+      novoLevel = char.level + 1;
+      // Recálculo básico de HP/Eco (para a próxima sessão)
+      const novoMaxHp = char.maxHp + 50;
+      const novoMaxEco = char.maxEco + 20;
+
+      levelUpMessage.push(`✨ LEVEL UP! Você alcançou o Nível ${novoLevel}!`);
+      log.push(...levelUpMessage); // Adiciona ao log de combate
+
+      // Aplica mudanças no DB
+      await this.prisma.character.update({
+        where: { id: playerId },
+        data: {
+          level: novoLevel,
+          xp: novoXp,
+          maxHp: novoMaxHp,
+          maxEco: novoMaxEco,
+          hp: novoMaxHp, // Cura o jogador
+          eco: novoMaxEco,
+        },
+      });
+    } else {
+      // Atualiza apenas o XP e o Ouro se não houver level up
+      await this.prisma.character.update({
+        where: { id: playerId },
+        data: { xp: novoXp, gold: char.gold + goldGanho },
+      });
+    }
+
+    // 3. Informar o jogador via evento PlayerUpdated
+    this.eventEmitter.emit('combat.win', {
+      playerId: playerId,
+      // Enviar o novo XP TOTAL
+      newTotalXp: novoXp.toString(), // <-- MUDANÇA AQUI
+      goldGained: goldGanho,
+      newLevel: levelUpMessage.length > 0 ? novoLevel : undefined,
+    });
+
+    log.push(`\n[RECOMPENSA] Você ganhou ${xpGanho} XP e ${goldGanho} Ouro!`);
+  }
+
+  // --- FIM DE COMBATE (MODIFICADO) ---
 
   private endCombat(
     playerId: string,
     result: 'win' | 'loss' | 'flee',
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _log: string[],
+    log: string[],
   ): void {
     const combat = this.activeCombats.get(playerId);
     if (!combat) return;
 
-    this.activeCombats.delete(playerId);
-
-    if (this.gateway) {
-      // Avisa o cliente que o combate acabou
-      this.gateway.getClientSocket(playerId)?.emit('combatEnd', result);
+    if (result === 'win') {
+      // Chamar a lógica de vitória (que agora emite evento)
+      void this.handleCombatWin(playerId, combat, log);
     }
 
-    // (FUTURO): Lógica de EXP, Loot, etc.
-    // (FUTURO): Se 'loss', personagem deve ser movido para a sala inicial (respawn).
+    this.activeCombats.delete(playerId);
+
+    // Emitir evento de fim de combate
+    this.eventEmitter.emit('combat.end', {
+      playerId: playerId,
+      result: result,
+    });
   }
 
   // --- UTILS ---

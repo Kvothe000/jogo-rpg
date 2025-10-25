@@ -120,4 +120,38 @@ export class AuthService {
       access_token: this.jwtService.sign(payload),
     };
   }
+  /**
+   * Rota de teste para curar o personagem e dar um buff temporário.
+   */
+  async healAndBuff(characterId: string) {
+    const buffStrength = 50; // Aumentamos muito o dano para os testes
+
+    // 1. Encontrar o personagem para pegar o HP máximo
+    const char = await this.prisma.character.findUnique({
+      where: { id: characterId },
+      select: { maxHp: true, maxEco: true, strength: true, dexterity: true },
+    });
+
+    if (!char) {
+      throw new HttpException(
+        'Personagem não encontrado',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    // 2. Aplicar a cura e o buff de Força
+    await this.prisma.character.update({
+      where: { id: characterId },
+      data: {
+        hp: char.maxHp, // Restaura HP
+        eco: char.maxEco, // Restaura Eco/Mana
+        strength: char.strength + buffStrength, // Aumenta o dano para teste
+      },
+    });
+
+    return {
+      message: `Personagem curado e Força aumentada em +${buffStrength} para testes.`,
+      buff: buffStrength,
+    };
+  }
 }

@@ -23,7 +23,7 @@ interface CombatUpdatePayload {
 }
 
 export function GamePage() {
-  const { user, logout } = useAuth();
+  const { user, logout, updateProfile } = useAuth();
   const { socket, isConnected } = useSocket();
   const [room, setRoom] = useState<RoomData | null>(null);
   // Estado principal para o combate
@@ -32,7 +32,23 @@ export function GamePage() {
   // --- EFEITOS E LISTENERS ---
   useEffect(() => {
     if (!socket) return;
+// NOVO: Tratamento de atualização de perfil/recompensa
+    const handlePlayerUpdated = (payload: { newTotalXp: string; goldGained: number; newLevel?: number }) => {
+        // 1. Exibir a recompensa visualmente
+        const levelMsg = payload.newLevel ? ` e subiu para o Nível ${payload.newLevel}!` : '.';
+        alert(`🎉 RECOMPENSA! Ganhou ${payload.newTotalXp} XP e ${payload.goldGained} Ouro${levelMsg}`);
 
+        // 2. Atualiza o perfil no contexto com os novos valores do DB
+        updateProfile({
+            character: {
+                xp: payload.newTotalXp, 
+                gold: (user?.character?.gold ?? 0) + payload.goldGained, // Faz um cálculo local aproximado
+                level: payload.newLevel,
+                hp: user?.character?.maxHp, // Assume cura total no level up
+                eco: user?.character?.maxEco, // Assume cura total no level up
+            } as any, // Usamos 'as any' para forçar as props parciais
+        });
+    };
     const handleUpdateRoom = (data: RoomData) => {
       setRoom(data);
       // Ao mudar de sala, removemos o estado de combate (se houver)
@@ -87,7 +103,7 @@ const handleCombatEnd = (result: 'win' | 'loss' | 'flee') => {
     socket.on('combatStarted', handleCombatStarted); 
     socket.on('combatUpdate', handleCombatUpdate); 
     socket.on('combatEnd', handleCombatEnd);     
-
+    socket.off('playerUpdated', handlePlayerUpdated);
     // Pede os dados da sala assim que o socket conecta (playerLook)
     if (isConnected) {
       socket.emit('playerLook');
@@ -102,7 +118,7 @@ const handleCombatEnd = (result: 'win' | 'loss' | 'flee') => {
       socket.off('combatUpdate', handleCombatUpdate);
       socket.off('combatEnd', handleCombatEnd);
     };
-  }, [socket, isConnected, user]); // Adicione 'user' para garantir que o HP inicial esteja correto
+  }, [socket, isConnected, user, updateProfile]); // Adicione 'user' para garantir que o HP inicial esteja correto
 
   // --- FUNÇÕES DE AÇÃO ---
 

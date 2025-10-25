@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import {
   OnGatewayConnection,
   OnGatewayDisconnect,
@@ -6,22 +7,16 @@ import {
   WebSocketGateway,
   WebSocketServer,
   MessageBody,
+  ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from 'src/prisma/prisma.service';
 import type { SocketWithAuth } from './types/socket-with-auth.type';
-import {
-  // ... (outros imports)
-  ConnectedSocket, // <-- ADICIONE ESTE
-} from '@nestjs/websockets';
-
-// 1. CORREÇÃO DO IMPORT (TS2307)
-// O tipo 'TokenPayload' está DENTRO do 'user-payload.type.ts'
 import type { TokenPayload } from 'src/auth/types/user-payload.type';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import type { GameMap } from '@prisma/client';
 import { BattleService } from 'src/battle/battle.service';
+import { OnEvent } from '@nestjs/event-emitter';
 
 @WebSocketGateway({
   cors: {
@@ -47,28 +42,22 @@ export class GameGateway
     this.jwtSecret = secret;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   afterInit(_server: Server) {
     console.log('🎮 GameGateway Inicializado!');
   }
 
-  // 2. CORREÇÃO DO HANDLECONNECTION (TS2304)
-  // Restauramos a lógica de autenticação (o try...catch)
   async handleConnection(client: SocketWithAuth) {
     try {
-      // 1. Pegar o token
       const authHeader = client.handshake.headers.authorization;
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
         throw new Error('Token não fornecido ou mal formatado');
       }
       const token: string = authHeader.split(' ')[1];
 
-      // 2. Verificar o token
       const payload = this.jwtService.verify<TokenPayload>(token, {
         secret: this.jwtSecret,
       });
 
-      // 3. Buscar o usuário no banco (aqui definimos a var 'user')
       const user = await this.prisma.user.findUnique({
         where: { id: payload.sub },
         include: { character: true },
@@ -78,13 +67,10 @@ export class GameGateway
         throw new Error('Usuário não encontrado');
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { passwordHash: _removedHash, ...userPayload } = user;
       client.data.user = userPayload;
 
       console.log(`✅ Cliente Conectado: ${userPayload.email}`);
-
-      // ESTA LINHA CORRIGE O PROBLEMA DE TIMING
       await this.sendRoomDataToClient(client);
     } catch (error: unknown) {
       let errorMessage = 'Falha na conexão';
@@ -96,22 +82,25 @@ export class GameGateway
     }
   }
 
+  handleDisconnect(client: SocketWithAuth) {
+    const user = client.data.user;
+    if (user) {
+      console.log(`🔌 Cliente Desconectado: ${user.email}`);
+    } else {
+      console.log('🔌 Cliente (não autenticado) Desconectado');
+    }
+  }
+
   @SubscribeMessage('playerLook')
-  async handlePlayerLook(
-    // MUDE AQUI: Use @ConnectedSocket()
-    @ConnectedSocket() client: SocketWithAuth,
-  ) {
-    // O resto da função continua igual
+  async handlePlayerLook(@ConnectedSocket() client: SocketWithAuth) {
     await this.sendRoomDataToClient(client);
   }
 
   @SubscribeMessage('playerMove')
   async handlePlayerMove(
-    // MUDE AQUI: Use @ConnectedSocket() em vez do primeiro parâmetro
     @ConnectedSocket() client: SocketWithAuth,
     @MessageBody() direction: string,
   ) {
-    // O resto da função continua igual
     const { user } = client.data;
     if (!user.character) {
       client.emit('serverMessage', 'Erro: Personagem não encontrado.');
@@ -148,53 +137,6 @@ export class GameGateway
     await this.sendRoomDataToClient(client);
   }
 
-  private async sendRoomDataToClient(client: SocketWithAuth) {
-    if (!client.data.user.character) {
-      client.emit('serverMessage', 'Erro: Personagem não encontrado.');
-      return;
-    }
-
-    const mapId = client.data.user.character.mapId;
-    const currentPlayerId = client.data.user.character.id;
-
-    // ----- VERIFIQUE ESTA PARTE COM MUITA ATENÇÃO -----
-    const room = await this.prisma.gameMap.findUnique({
-      where: { id: mapId },
-      include: {
-        // <<<---- GARANTA QUE ESTE 'include' EXISTE E ESTÁ CORRETO
-        characters: {
-          select: { id: true, name: true },
-        },
-        npcInstances: {
-          include: {
-            template: { select: { name: true } },
-          },
-        },
-      },
-    });
-    // ----- FIM DA VERIFICAÇÃO -----
-
-    if (room) {
-      const otherPlayers = room.characters.filter(
-        (char) => char.id !== currentPlayerId,
-      );
-      const npcsInRoom = room.npcInstances.map((instance) => ({
-        id: instance.id,
-        name: instance.template.name,
-      }));
-
-      // ----- VERIFIQUE SE O EMIT INCLUI 'players' E 'npcs' -----
-      client.emit('updateRoom', {
-        name: room.name,
-        description: room.description,
-        exits: room.exits as Record<string, string>,
-        players: otherPlayers, // <<<---- GARANTA QUE ESTÁ AQUI
-        npcs: npcsInRoom, // <<<---- GARANTA QUE ESTÁ AQUI
-      });
-      // ----- FIM DA VERIFICAÇÃO -----
-    }
-  }
-  // NOVO: Ouvinte para interação com NPC
   @SubscribeMessage('playerInteractNpc')
   async handleNpcInteraction(
     @ConnectedSocket() client: SocketWithAuth,
@@ -207,24 +149,21 @@ export class GameGateway
     }
     const playerRoomId = user.character.mapId;
 
-    // 1. Verificar se a instância do NPC existe E está na mesma sala
     const npcInstance = await this.prisma.nPCInstance.findFirst({
       where: {
         id: npcInstanceId,
-        mapId: playerRoomId, // Crucial: NPC TEM que estar na mesma sala
+        mapId: playerRoomId,
       },
       include: {
-        template: true, // Precisamos do nome do template
+        template: true,
       },
     });
 
-    // 2. Se o NPC não for encontrado (ou estiver em outra sala)
     if (!npcInstance) {
       client.emit('serverMessage', 'Não há ninguém com esse nome aqui.');
       return;
     }
 
-    // 3. Lógica de Diálogo Simples (Hardcoded por enquanto)
     const npcName = npcInstance.template.name;
     let dialogue = '';
 
@@ -237,14 +176,12 @@ export class GameGateway
         dialogue = '"..." (Ele não parece querer conversar.)';
     }
 
-    // 4. Enviar o diálogo APENAS para o cliente que interagiu
     client.emit('npcDialogue', {
       npcName: npcName,
       dialogue: dialogue,
     });
   }
 
-  // 3. NOVO: Ouvinte para Iniciar Combate
   @SubscribeMessage('startCombat')
   async handleStartCombat(@ConnectedSocket() client: SocketWithAuth) {
     if (!client.data.user.character) {
@@ -252,7 +189,6 @@ export class GameGateway
       return;
     }
 
-    // Usamos nosso monstro de teste
     const MONSTER_ID = 'mon_slime_mana';
 
     const combatData = await this.battleService.initializeCombat(
@@ -261,7 +197,6 @@ export class GameGateway
     );
 
     if (combatData) {
-      // 4. Responde ao cliente com o início do combate
       client.emit('combatStarted', {
         monsterName: combatData.monsterName,
         monsterHp: combatData.monsterHp,
@@ -275,7 +210,7 @@ export class GameGateway
       );
     }
   }
-  // NOVO: Ouvinte para o ataque do jogador
+
   @SubscribeMessage('combatAttack')
   async handleCombatAttack(@ConnectedSocket() client: SocketWithAuth) {
     const playerId = client.data.user.character?.id;
@@ -293,25 +228,82 @@ export class GameGateway
     }
   }
 
-  // Crie a função utilitária 'getClientSocket' (que faltava)
+  @OnEvent('combat.win')
+  handleCombatWinEvent(payload: {
+    playerId: string;
+    // Espera o novo XP TOTAL
+    newTotalXp: string; // <-- MUDANÇA AQUI
+    goldGained: number;
+    newLevel?: number;
+  }) {
+    const clientSocket = this.getClientSocket(payload.playerId);
+    if (clientSocket) {
+      clientSocket.emit('playerUpdated', {
+        // Repassa o novo XP TOTAL
+        newTotalXp: payload.newTotalXp, // <-- MUDANÇA AQUI
+        goldGained: payload.goldGained,
+        newLevel: payload.newLevel,
+      });
+    }
+  }
+
+  @OnEvent('combat.end')
+  handleCombatEndEvent(payload: {
+    playerId: string;
+    result: 'win' | 'loss' | 'flee';
+  }) {
+    const clientSocket = this.getClientSocket(payload.playerId);
+    if (clientSocket) {
+      clientSocket.emit('combatEnd', payload.result);
+    }
+  }
+
   getClientSocket(playerId: string): SocketWithAuth | undefined {
-    // Encontra o socket que tem o CharacterId no data
     return Array.from(this.server.sockets.sockets.values()).find(
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       (s) => s.data.user.character?.id === playerId,
     ) as SocketWithAuth | undefined;
   }
-  // 3. CORREÇÃO DO DISCONNECT (TS2420)
-  // Restauramos o método que estava faltando
-  handleDisconnect(client: SocketWithAuth) {
-    const user = client.data.user;
-    if (user) {
-      console.log(`🔌 Cliente Desconectado: ${user.email}`);
-    } else {
-      console.log('🔌 Cliente (não autenticado) Desconectado');
-    }
-    // TODO: Remover o cliente da sala/mundo
-  }
 
-  // ... (Aqui virá o handleChatMessage que você talvez já tenha do Passo 15)
-} // Fim da classe
+  private async sendRoomDataToClient(client: SocketWithAuth) {
+    if (!client.data.user || !client.data.user.character) {
+      client.disconnect();
+      return;
+    }
+
+    const mapId = client.data.user.character.mapId;
+    const currentPlayerId = client.data.user.character.id;
+
+    const room = await this.prisma.gameMap.findUnique({
+      where: { id: mapId },
+      include: {
+        characters: {
+          select: { id: true, name: true },
+        },
+        npcInstances: {
+          include: {
+            template: { select: { name: true } },
+          },
+        },
+      },
+    });
+
+    if (room) {
+      const otherPlayers = room.characters.filter(
+        (char) => char.id !== currentPlayerId,
+      );
+      const npcsInRoom = room.npcInstances.map((instance) => ({
+        id: instance.id,
+        name: instance.template.name,
+      }));
+
+      client.emit('updateRoom', {
+        name: room.name,
+        description: room.description,
+        exits: room.exits as Record<string, string>,
+        players: otherPlayers,
+        npcs: npcsInRoom,
+      });
+    }
+  }
+}

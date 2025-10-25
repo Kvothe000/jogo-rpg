@@ -32,7 +32,7 @@ interface ServerToClientEvents {
   combatUpdate: (payload: CombatUpdatePayload) => void; // NOVO: Atualiza a interface de combate
   combatEnd: (result: 'win' | 'loss' | 'flee') => void; // NOVO: Fim do combate
   playerUpdated: (payload: {
-    xpGained: string; // XP como string (BigInt)
+    newTotalXp: string; // XP como string (BigInt)
     goldGained: number;
     newLevel?: number; // Opcional, se houver level up
   }) => void;

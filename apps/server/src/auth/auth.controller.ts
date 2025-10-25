@@ -5,7 +5,8 @@ import {
   HttpCode,
   HttpStatus,
   Get, // 1. IMPORTE O 'Get'
-  UseGuards, // 2. IMPORTE O 'UseGuards'
+  UseGuards,
+  HttpException, // 2. IMPORTE O 'UseGuards'
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
@@ -41,5 +42,22 @@ export class AuthController {
     // 3. 'user' agora está 100% tipado e seguro!
     //    Os erros do ESLint desaparecerão.
     return user;
+  }
+  @UseGuards(JwtAuthGuard)
+  @Get('heal')
+  @HttpCode(HttpStatus.OK)
+  async heal(@GetUser() user: UserPayload) {
+    // --- CORREÇÃO (Type Guard) ---
+    if (!user.character) {
+      // Se, por algum motivo MUITO estranho, não houver personagem, retorne erro.
+      throw new HttpException(
+        'Personagem não encontrado para este usuário.',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    // Daqui em diante, o TS sabe que user.character existe.
+    // --- FIM DA CORREÇÃO ---
+
+    return this.authService.healAndBuff(user.character.id);
   }
 }

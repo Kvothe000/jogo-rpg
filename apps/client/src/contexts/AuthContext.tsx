@@ -1,6 +1,6 @@
 import {
   createContext,
-  ReactNode,
+  type ReactNode,
   useContext,
   useState,
   useEffect,
@@ -8,7 +8,6 @@ import {
 import { api } from '../services/api';
 import type { UserPayload } from '../../../server/src/auth/types/user-payload.type';
 
-// O que o nosso contexto vai fornecer
 interface AuthContextType {
   isAuthenticated: boolean;
   user: UserPayload | null;
@@ -20,28 +19,25 @@ interface AuthContextType {
     charName: string,
   ) => Promise<void>;
   logout: () => void;
+  updateProfile: (newUserData: Partial<UserPayload>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// O 'Provedor'
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserPayload | null>(null);
   const [token, setToken] = useState<string | null>(null);
 
-  // Efeito para carregar o token do localStorage ao iniciar
   useEffect(() => {
     const storedToken = localStorage.getItem('rpg-token');
     if (storedToken) {
       setToken(storedToken);
-      // Buscar os dados do usuário
       api
-        .get('/auth/profile') // O token é adicionado pelo interceptor
+        .get('/auth/profile')
         .then((response) => {
           setUser(response.data);
         })
         .catch(() => {
-          // Token inválido, limpe
           localStorage.removeItem('rpg-token');
           setToken(null);
         });
@@ -55,7 +51,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(access_token);
     localStorage.setItem('rpg-token', access_token);
 
-    // Buscar dados do usuário após o login
     const profileResponse = await api.get('/auth/profile');
     setUser(profileResponse.data);
   };
@@ -70,7 +65,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password: pass,
       characterName: charName,
     });
-    // Após registrar, faz login automaticamente
     await login(email, pass);
   };
 
@@ -82,16 +76,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isAuthenticated = !!token && !!user;
 
+  const updateProfile = (newUserData: Partial<UserPayload>) => {
+    setUser((prevUser) => {
+      if (!prevUser) return null;
+
+      const updatedCharacterData = newUserData.character
+        ? {
+            ...prevUser.character,
+            ...newUserData.character,
+            xp: newUserData.character.xp !== undefined
+                  ? BigInt(newUserData.character.xp)
+                  : prevUser.character?.xp ?? BigInt(0),
+          }
+        : prevUser.character;
+
+      return {
+        ...prevUser,
+        ...newUserData,
+        character: updatedCharacterData as UserPayload['character'],
+      };
+    });
+  };
+
   return (
     <AuthContext.Provider
-      value={{ isAuthenticated, user, token, login, register, logout }}
+      value={{ isAuthenticated, user, token, login, register, logout, updateProfile }}
     >
       {children}
     </AuthContext.Provider>
   );
 }
 
-// Hook customizado para facilitar o uso
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
