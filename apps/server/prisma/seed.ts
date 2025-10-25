@@ -7,6 +7,7 @@ const ROOM_ID_START = 'cl_starter_room';
 const ROOM_ID_HALLWAY = 'cl_hallway_01';
 const NPC_TEMPLATE_GUARD = 'npc_template_guard';
 const MONSTER_TEMPLATE_SLIME = 'mon_slime_mana';
+const ITEM_SLIME_GOO = 'item_slime_goo';
 
 async function main() {
   console.log('Iniciando o script de seed v2...');
@@ -77,27 +78,51 @@ async function main() {
     },
   });
   console.log('Instância de NPC criada no corredor:', guardInstance.id);
-  // --- 3. NOVO: Criar o Template do Monstro ---
+  // --- 3. Template do Monstro (ATUALIZADO) ---
   const slimeTemplate = await prisma.nPCTemplate.upsert({
     where: { id: MONSTER_TEMPLATE_SLIME },
-    update: {},
+    update: {
+      // ATUALIZA A LOOT TABLE
+      lootTable: {
+        drops: [{ itemId: ITEM_SLIME_GOO, chance: 0.75, minQty: 1, maxQty: 3 }], // 75% chance de dropar 1-3 Gosmas
+      },
+    },
     create: {
       id: MONSTER_TEMPLATE_SLIME,
       name: 'Slime de Mana Fraco',
       description: 'Uma bolha de mana gelatinosa, Rank E.',
-      isHostile: true, // É um monstro
+      isHostile: true,
       stats: {
-        hp: 80,
-        attack: 15,
+        hp: 50,
+        attack: 10,
         defense: 5,
         xp: 50,
         goldMin: 5,
         goldMax: 15,
       },
-      lootTable: {}, // Loot vazio por enquanto
+      lootTable: {
+        // DEFINE NA CRIAÇÃO TAMBÉM
+        drops: [{ itemId: ITEM_SLIME_GOO, chance: 0.75, minQty: 1, maxQty: 3 }],
+      },
     },
   });
-  console.log('Template de Monstro criado:', slimeTemplate.name);
+  console.log('Template de Monstro criado/atualizado:', slimeTemplate.name);
+
+  // --- 4. NOVO: Criar o Item de Loot ---
+  await prisma.item.upsert({
+    where: { id: ITEM_SLIME_GOO },
+    update: {},
+    create: {
+      id: ITEM_SLIME_GOO,
+      name: 'Gosma de Slime',
+      description: 'Um resíduo pegajoso deixado por um Slime de Mana.',
+      type: 'MATERIAL', // Definido no Enum ItemType
+      // slot: null, // Não é equipamento
+      // stats: {}, // Não dá stats
+      price: 5, // Pode ser vendido por 5 gold
+    },
+  });
+  console.log('Item de Loot criado: Gosma de Slime');
   // --- 3. Criar as Facções (CÓDIGO COMPLETO) ---
   await prisma.faction.upsert({
     where: { name: 'Cidadela da Ordem' },

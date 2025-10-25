@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../contexts/SocketContext';
 import { GameChat } from '../components/GameChat'; 
@@ -11,6 +11,7 @@ interface RoomData {
   players: { id: string; name: string }[];
   npcs: { id: string; name: string }[];
 }
+
 interface CombatUpdatePayload {
   isActive: boolean;
   monsterName: string;
@@ -22,132 +23,176 @@ interface CombatUpdatePayload {
   isPlayerTurn: boolean;
 }
 
+interface LootDropPayload {
+  itemId: string;
+  itemName: string;
+  quantity: number;
+}
+
 export function GamePage() {
   const { user, logout, updateProfile } = useAuth();
   const { socket, isConnected } = useSocket();
   const [room, setRoom] = useState<RoomData | null>(null);
-  // Estado principal para o combate
   const [combatData, setCombatData] = useState<CombatUpdatePayload | null>(null);
+  
+  // Refs para acessar valores atualizados nos listeners
+  const userRef = useRef(user);
+  const updateProfileRef = useRef(updateProfile);
+  const combatDataRef = useRef(combatData);
+
+  // Atualizar as refs quando os valores mudam
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  useEffect(() => {
+    updateProfileRef.current = updateProfile;
+  }, [updateProfile]);
+
+  useEffect(() => {
+    combatDataRef.current = combatData;
+  }, [combatData]);
 
   // --- EFEITOS E LISTENERS ---
   useEffect(() => {
     if (!socket) return;
-// NOVO: Tratamento de atualização de perfil/recompensa
-    const handlePlayerUpdated = (payload: { newTotalXp: string; goldGained: number; newLevel?: number }) => {
-        // 1. Exibir a recompensa visualmente
-        const levelMsg = payload.newLevel ? ` e subiu para o Nível ${payload.newLevel}!` : '.';
-        alert(`🎉 RECOMPENSA! Ganhou ${payload.newTotalXp} XP e ${payload.goldGained} Ouro${levelMsg}`);
 
-        // 2. Atualiza o perfil no contexto com os novos valores do DB
-        updateProfile({
-            character: {
-                xp: payload.newTotalXp, 
-                gold: (user?.character?.gold ?? 0) + payload.goldGained, // Faz um cálculo local aproximado
-                level: payload.newLevel,
-                hp: user?.character?.maxHp, // Assume cura total no level up
-                eco: user?.character?.maxEco, // Assume cura total no level up
-            } as any, // Usamos 'as any' para forçar as props parciais
-        });
-    };
+    console.log('GAMEPAGE: Registrando listeners do socket...');
+
     const handleUpdateRoom = (data: RoomData) => {
+      console.log('Dados da sala recebidos:', data);
       setRoom(data);
-      // Ao mudar de sala, removemos o estado de combate (se houver)
-      setCombatData(null); 
+      setCombatData(null);
     };
+
     const handleNpcDialogue = (payload: { npcName: string; dialogue: string }) => {
       alert(`${payload.npcName} diz:\n${payload.dialogue}`);
     };
+
     const handleServerMessage = (message: string) => {
       alert(`[SISTEMA]: ${message}`);
     };
 
-    // NOVO: Tratamento do início de combate
-const handleCombatStarted = (payload: any) => {
-    // VERIFICAÇÃO DE SEGURANÇA: Garantimos que o HP seja pelo menos 100
-    const currentHp = user?.character?.hp ?? 100; 
-    const maxHp = user?.character?.maxHp ?? 100;
-
-    setCombatData({
+    const handleCombatStarted = (payload: any) => {
+      const currentUser = userRef.current;
+      const currentHp = currentUser?.character?.hp ?? 100;
+      const maxHp = currentUser?.character?.maxHp ?? 100;
+      
+      setCombatData({
         isActive: true,
         monsterName: payload.monsterName,
-
-        // CORRIGIDO: Agora usa o HP verificado
-        playerHp: currentHp, 
-        playerMaxHp: maxHp, 
-
+        playerHp: currentHp,
+        playerMaxHp: maxHp,
         monsterHp: payload.monsterHp,
         monsterMaxHp: payload.monsterHp,
         log: [payload.message],
         isPlayerTurn: true,
-    });
-    alert(payload.message);
-};
+      });
+      alert(payload.message);
+    };
 
-    // NOVO: Atualização de combate (dano, log, etc.)
     const handleCombatUpdate = (payload: CombatUpdatePayload) => {
       setCombatData(payload);
     };
 
-    /// NOVO: Fim de combate
-const handleCombatEnd = (result: 'win' | 'loss' | 'flee') => {
-  alert(`Batalha Encerrada: ${result === 'win' ? 'VITÓRIA!' : result === 'loss' ? 'DERROTA!' : 'FUGIU!'}`);
-  setCombatData(null); // Sai da tela de combate
-  // socket?.emit('playerLook'); // <-- REMOVA ESTA LINHA! O backend deve mandar a atualização de volta
-};
+    const handleCombatEnd = (result: 'win' | 'loss' | 'flee') => {
+      alert(`Batalha Encerrada: ${result === 'win' ? 'VITÓRIA!' : result === 'loss' ? 'DERROTA!' : 'FUGIU!'}`);
+      setCombatData(null);
+    };
 
+    const handlePlayerUpdated = (payload: { 
+      newTotalXp: string; 
+      goldGained: number; 
+      newLevel?: number;
+      newHp?: number; // Adicionado para receber HP atualizado se disponível
+    }) => {
+      const currentUser = userRef.current;
+      const currentCombatData = combatDataRef.current;
+      
+      // Calcular XP ganho a partir do total
+      const currentXp = currentUser?.character?.xp ?? BigInt(0);
+      const xpGained = BigInt(payload.newTotalXp) - currentXp;
+      
+      const levelMsg = payload.newLevel ? ` e subiu para o Nível ${payload.newLevel}!` : '.';
+      alert(`🎉 RECOMPENSA! Ganhou ${xpGained.toString()} XP e ${payload.goldGained} Ouro${levelMsg}`);
+
+      // Usar HP do payload se disponível, caso contrário usar HP do combate ou do usuário
+      const updatedHp = payload.newHp ?? currentCombatData?.playerHp ?? currentUser?.character?.hp;
+      
+      updateProfileRef.current({
+        character: {
+          xp: payload.newTotalXp,
+          gold: (currentUser?.character?.gold ?? 0) + payload.goldGained,
+          level: payload.newLevel ?? currentUser?.character?.level,
+          hp: payload.newLevel ? currentUser?.character?.maxHp : updatedHp,
+          maxHp: payload.newLevel ? (currentUser?.character?.maxHp ?? 100) + 50 : currentUser?.character?.maxHp,
+          eco: payload.newLevel ? currentUser?.character?.maxEco : currentUser?.character?.eco,
+        } as any,
+      });
+    };
+
+    const handleLootReceived = (payload: { drops: LootDropPayload[] }) => {
+      if (payload.drops.length > 0) {
+        const lootMessage = payload.drops.map(d => `${d.quantity}x ${d.itemName}`).join(', ');
+        alert(`💰 LOOT! Você obteve: ${lootMessage}`);
+      }
+    };
 
     // Liga os ouvintes
     socket.on('updateRoom', handleUpdateRoom);
     socket.on('npcDialogue', handleNpcDialogue);
     socket.on('serverMessage', handleServerMessage);
-    socket.on('combatStarted', handleCombatStarted); 
-    socket.on('combatUpdate', handleCombatUpdate); 
-    socket.on('combatEnd', handleCombatEnd);     
-    socket.off('playerUpdated', handlePlayerUpdated);
-    // Pede os dados da sala assim que o socket conecta (playerLook)
+    socket.on('combatStarted', handleCombatStarted);
+    socket.on('combatUpdate', handleCombatUpdate);
+    socket.on('combatEnd', handleCombatEnd);
+    socket.on('playerUpdated', handlePlayerUpdated);
+    socket.on('lootReceived', handleLootReceived);
+
+    // Pede os dados da sala apenas uma vez quando o socket conecta
     if (isConnected) {
+      console.log("Socket conectado, pedindo dados da sala...");
       socket.emit('playerLook');
     }
 
     // Função de limpeza
     return () => {
+      console.log('GAMEPAGE: Limpando listeners do socket...');
       socket.off('updateRoom', handleUpdateRoom);
       socket.off('npcDialogue', handleNpcDialogue);
       socket.off('serverMessage', handleServerMessage);
       socket.off('combatStarted', handleCombatStarted);
       socket.off('combatUpdate', handleCombatUpdate);
       socket.off('combatEnd', handleCombatEnd);
+      socket.off('playerUpdated', handlePlayerUpdated);
+      socket.off('lootReceived', handleLootReceived);
     };
-  }, [socket, isConnected, user, updateProfile]); // Adicione 'user' para garantir que o HP inicial esteja correto
+  }, [socket, isConnected]); // Apenas socket e isConnected como dependências
 
   // --- FUNÇÕES DE AÇÃO ---
 
-  // Função chamada quando um botão de direção é clicado
-const handleMove = (direction: string) => {
+  const handleMove = useCallback((direction: string) => {
     if (socket) {
-        socket.emit('playerMove', direction); // <-- CHAMA O BACKEND
+      socket.emit('playerMove', direction);
     }
-};
+  }, [socket]);
 
-// Função chamada quando o botão de um NPC é clicado
-const handleInteractNpc = (npcInstanceId: string) => {
+  const handleInteractNpc = useCallback((npcInstanceId: string) => {
     if (socket) {
-        socket.emit('playerInteractNpc', npcInstanceId); // <-- CHAMA O BACKEND
+      socket.emit('playerInteractNpc', npcInstanceId);
     }
-};
+  }, [socket]);
 
-  const handleStartCombat = () => {
+  const handleStartCombat = useCallback(() => {
     if (socket) {
       socket.emit('startCombat'); 
     }
-  };
+  }, [socket]);
 
-  // NOVO: Função de Ataque
-  const handleAttack = () => {
-      if (socket && combatData?.isPlayerTurn) {
-          socket.emit('combatAttack');
-      }
-  };
+  const handleAttack = useCallback(() => {
+    if (socket && combatData?.isPlayerTurn) {
+      socket.emit('combatAttack');
+    }
+  }, [socket, combatData]);
 
   if (!room) {
     return <div>Carregando informações da sala...</div>;
@@ -162,78 +207,116 @@ const handleInteractNpc = (npcInstanceId: string) => {
 
         {/* RENDERIZAÇÃO CONDICIONAL */}
         {combatData?.isActive ? (
-            // --- MODO COMBATE ---
-            <div style={{ textAlign: 'center' }}>
-                <h2 style={{ color: 'red' }}>Lutando contra: {combatData.monsterName}</h2>
+          // --- MODO COMBATE ---
+          <div style={{ textAlign: 'center' }}>
+            <h2 style={{ color: 'red' }}>Lutando contra: {combatData.monsterName}</h2>
 
-                <div style={{ margin: '20px 0' }}>
-                    <p>HP Monstro: **{combatData.monsterHp} / {combatData.monsterMaxHp}**</p>
-                    <p style={{ fontWeight: 'bold' }}>Seu HP: {combatData.playerHp} / {combatData.playerMaxHp}</p>
-                </div>
-
-                <div style={{ height: '150px', overflowY: 'scroll', border: '1px solid #eee', margin: '10px 0', textAlign: 'left', padding: '5px', fontSize: '0.9em' }}>
-                    {combatData.log.map((line, i) => <div key={i}>{line}</div>)}
-                </div>
-
-                <p style={{ marginTop: '10px' }}>Turno: **{combatData.isPlayerTurn ? 'SEU ATAQUE' : 'Monstro'}**</p>
-                <button 
-                    onClick={handleAttack} 
-                    disabled={!combatData.isPlayerTurn}
-                    style={{ padding: '10px 20px', background: 'darkgreen', color: 'white', border: 'none', cursor: combatData.isPlayerTurn ? 'pointer' : 'not-allowed' }}
-                >
-                    Ataque Básico (Força)
-                </button>
-                {/* Futuramente: Botão de Habilidades */}
+            <div style={{ margin: '20px 0' }}>
+              <p>HP Monstro: **{combatData.monsterHp} / {combatData.monsterMaxHp}**</p>
+              <p style={{ fontWeight: 'bold' }}>Seu HP: {combatData.playerHp} / {combatData.playerMaxHp}</p>
             </div>
+
+            <div style={{ 
+              height: '150px', 
+              overflowY: 'scroll', 
+              border: '1px solid #eee', 
+              margin: '10px 0', 
+              textAlign: 'left', 
+              padding: '5px', 
+              fontSize: '0.9em' 
+            }}>
+              {combatData.log.map((line, i) => <div key={i}>{line}</div>)}
+            </div>
+
+            <p style={{ marginTop: '10px' }}>
+              Turno: **{combatData.isPlayerTurn ? 'SEU ATAQUE' : 'Monstro'}**
+            </p>
+            <button 
+              onClick={handleAttack} 
+              disabled={!combatData.isPlayerTurn}
+              style={{ 
+                padding: '10px 20px', 
+                background: 'darkgreen', 
+                color: 'white', 
+                border: 'none', 
+                cursor: combatData.isPlayerTurn ? 'pointer' : 'not-allowed' 
+              }}
+            >
+              Ataque Básico (Força)
+            </button>
+          </div>
         ) : (
-            // --- MODO EXPLORAÇÃO ---
-            <>
-                <h2>{room.name}</h2>
-                <p>{room.description}</p>
+          // --- MODO EXPLORAÇÃO ---
+          <>
+            <h2>{room.name}</h2>
+            <p>{room.description}</p>
 
-                {/* ... (Seções de NPCs e Jogadores) ... */}
-                {/* Mantive o código da sala e dos NPCs aqui (do código anterior) */}
-                {room.npcs && room.npcs.length > 0 && (
-                    <div style={{ marginTop: '15px' }}>
-                        <h4>NPCs Presentes:</h4>
-                        <ul style={{ listStyle: 'none', padding: 0 }}>
-                            {room.npcs.map((npc) => (
-                            <li key={npc.id} style={{ marginBottom: '5px' }}>
-                                <button onClick={() => handleInteractNpc(npc.id)}>{npc.name} (Conversar)</button>
-                            </li>
-                            ))}
-                        </ul>
-                    </div>
-                )}
+            {/* Seções de NPCs e Jogadores */}
+            {room.npcs && room.npcs.length > 0 && (
+              <div style={{ marginTop: '15px' }}>
+                <h4>NPCs Presentes:</h4>
+                <ul style={{ listStyle: 'none', padding: 0 }}>
+                  {room.npcs.map((npc) => (
+                    <li key={npc.id} style={{ marginBottom: '5px' }}>
+                      <button onClick={() => handleInteractNpc(npc.id)}>
+                        {npc.name} (Conversar)
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
-                <hr style={{ margin: '20px 0' }}/>
+            {room.players && room.players.length > 0 && (
+              <div style={{ marginTop: '15px' }}>
+                <h4>Outros Jogadores:</h4>
+                <ul style={{ listStyle: 'none', padding: 0 }}>
+                  {room.players.map((player) => (
+                    <li key={player.id} style={{ marginBottom: '5px' }}>
+                      {player.name}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
-                {/* BOTÃO DE INICIAR COMBATE (FORA DO MODO COMBATE) */}
-                <h3>Ações de Teste</h3>
-                <button 
-                    onClick={handleStartCombat} 
-                    style={{ padding: '10px 15px', background: 'red', color: 'white', border: 'none', cursor: 'pointer' }}
+            <hr style={{ margin: '20px 0' }}/>
+
+            {/* BOTÃO DE INICIAR COMBATE (FORA DO MODO COMBATE) */}
+            <h3>Ações de Teste</h3>
+            <button 
+              onClick={handleStartCombat} 
+              style={{ 
+                padding: '10px 15px', 
+                background: 'red', 
+                color: 'white', 
+                border: 'none', 
+                cursor: 'pointer' 
+              }}
+            >
+              ⚔️ INICIAR COMBATE (TESTE)
+            </button>
+
+            <hr style={{ margin: '20px 0' }}/>
+
+            <h3>Saídas:</h3>
+            <div>
+              {Object.keys(room.exits).map((direction) => (
+                <button
+                  key={direction}
+                  onClick={() => handleMove(direction)}
+                  style={{ 
+                    marginRight: '10px', 
+                    textTransform: 'capitalize', 
+                    padding: '8px 12px' 
+                  }}
                 >
-                    ⚔️ INICIAR COMBATE (TESTE)
+                  {direction}
                 </button>
-
-                <hr style={{ margin: '20px 0' }}/>
-
-                <h3>Saídas:</h3>
-                <div>
-                    {Object.keys(room.exits).map((direction) => (
-                        <button
-                            key={direction}
-                            onClick={() => handleMove(direction)}
-                            style={{ marginRight: '10px', textTransform: 'capitalize', padding: '8px 12px' }}
-                        >
-                            {direction}
-                        </button>
-                    ))}
-                </div>
-            </>
+              ))}
+            </div>
+          </>
         )}
-
       </div>
 
       {/* Coluna da Direita (Info do Jogador e Chat) */}
@@ -245,7 +328,10 @@ const handleInteractNpc = (npcInstanceId: string) => {
         <p>Ouro: {user?.character?.gold}</p>
         <p>XP: {user?.character?.xp?.toString() ?? '0'}</p>
 
-        <p>Estado da Ligação: {isConnected ? <span style={{ color: 'green' }}> Ligado</span> : <span style={{ color: 'red' }}> Desligado</span>}</p>
+        <p>Estado da Ligação: {isConnected ? 
+          <span style={{ color: 'green' }}> Ligado</span> : 
+          <span style={{ color: 'red' }}> Desligado</span>}
+        </p>
         <button onClick={logout} style={{ marginTop: '10px' }}>Sair</button>
         <hr style={{ margin: '20px 0' }}/>
         <GameChat />

@@ -36,6 +36,7 @@ interface ServerToClientEvents {
     goldGained: number;
     newLevel?: number; // Opcional, se houver level up
   }) => void;
+  lootReceived: (payload: { drops: LootDropPayload[] }) => void;
 }
 
 // 3. Usamos 'Record<string, never>'
@@ -44,6 +45,11 @@ type InterServerEvents = Record<string, never>;
 // 4. A interface SocketData está correta
 interface SocketData {
   user: UserPayload;
+}
+export interface LootDropPayload {
+  itemId: string;
+  itemName: string;
+  quantity: number;
 }
 
 // 5. O tipo final está correto

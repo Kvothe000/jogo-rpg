@@ -17,6 +17,7 @@ import type { TokenPayload } from 'src/auth/types/user-payload.type';
 import type { GameMap } from '@prisma/client';
 import { BattleService } from 'src/battle/battle.service';
 import { OnEvent } from '@nestjs/event-emitter';
+import { LootDropPayload } from 'src/game/types/socket-with-auth.type';
 
 @WebSocketGateway({
   cors: {
@@ -228,25 +229,37 @@ export class GameGateway
     }
   }
 
-  @OnEvent('combat.win')
-  handleCombatWinEvent(payload: {
+  // OUVINTE para Recompensa de Stats (RENOMEADO)
+  @OnEvent('combat.win.stats')
+  handleCombatWinStatsEvent(payload: {
     playerId: string;
-    // Espera o novo XP TOTAL
-    newTotalXp: string; // <-- MUDANÇA AQUI
+    newTotalXp: string;
     goldGained: number;
     newLevel?: number;
   }) {
     const clientSocket = this.getClientSocket(payload.playerId);
     if (clientSocket) {
       clientSocket.emit('playerUpdated', {
-        // Repassa o novo XP TOTAL
-        newTotalXp: payload.newTotalXp, // <-- MUDANÇA AQUI
+        newTotalXp: payload.newTotalXp,
         goldGained: payload.goldGained,
         newLevel: payload.newLevel,
       });
     }
   }
 
+  // NOVO OUVINTE para Recompensa de Loot
+  @OnEvent('combat.win.loot')
+  handleCombatWinLootEvent(payload: {
+    playerId: string;
+    drops: LootDropPayload[];
+  }) {
+    const clientSocket = this.getClientSocket(payload.playerId);
+    if (clientSocket) {
+      clientSocket.emit('lootReceived', { drops: payload.drops });
+    }
+  }
+
+  // OUVINTE para Fim de Combate (EXISTENTE)
   @OnEvent('combat.end')
   handleCombatEndEvent(payload: {
     playerId: string;

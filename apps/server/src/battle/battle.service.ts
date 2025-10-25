@@ -1,5 +1,5 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Injectable } from '@nestjs/common';
@@ -7,10 +7,11 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import type { UserPayload } from 'src/auth/types/user-payload.type';
 import { CombatInstance, CombatUpdatePayload } from './types/combat.type';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Item } from '@prisma/client';
+import { LootDropPayload } from 'src/game/types/socket-with-auth.type';
 
 @Injectable()
 export class BattleService {
-  // Gerenciador de estado em memória (Mapeia CharacterId para CombatInstance)
   private activeCombats = new Map<string, CombatInstance>();
 
   constructor(
@@ -18,32 +19,24 @@ export class BattleService {
     private eventEmitter: EventEmitter2,
   ) {}
 
-  // --- LÓGICA DE DANO BASE (MVP) ---
-
-  /**
-   * Calcula o dano básico: (Ataque Bruto + Nível * 2) - Defesa
-   */
   private calculateDamage(
     attackerStats: any,
     defenderStats: any,
     attackerIsPlayer: boolean,
   ): number {
-    // Stats do atacante são player.character ou monsterTemplate.stats
     const attackPower = attackerIsPlayer
       ? attackerStats.strength
       : attackerStats.attack;
     const level = attackerIsPlayer ? attackerStats.level : 1;
     const defense = attackerIsPlayer
       ? defenderStats.defense
-      : defenderStats.constitution; // Simplificação
+      : defenderStats.constitution;
 
     const baseDamage = (attackPower ?? 5) + (level ?? 1) * 2;
     const finalDamage = Math.max(1, baseDamage - (defense ?? 0));
 
     return Math.floor(finalDamage);
   }
-
-  // --- INICIALIZAÇÃO DE COMBATE ---
 
   async initializeCombat(
     player: UserPayload,
@@ -76,15 +69,12 @@ export class BattleService {
     return newCombat;
   }
 
-  // --- LOOP DE COMBATE: ATAQUE DO JOGADOR ---
-
   async processPlayerAttack(
     playerId: string,
   ): Promise<CombatUpdatePayload | null> {
     const combat = this.activeCombats.get(playerId);
-    if (!combat) return null;
+    if (!combat) return null; // Não está em combate
 
-    // Buscar stats completos do DB (usamos 'select' para pegar apenas o necessário)
     const playerStats = await this.prisma.character.findUnique({
       where: { id: playerId },
       select: {
@@ -96,7 +86,7 @@ export class BattleService {
       },
     });
 
-    if (!playerStats) return null;
+    if (!playerStats) return null; // Jogador não encontrado
 
     const monsterStats = combat.monsterTemplate.stats as any;
     const monsterDefense = monsterStats.defense ?? 0;
@@ -113,14 +103,17 @@ export class BattleService {
       `Você ataca ${combat.monsterTemplate.name} e causa ${playerDamage} de dano.`,
     ];
 
-    // 2. Monstro Morre?
+    // 2. Monstro Morre? -> FIM DO COMBATE (SEM RETORNO DE PAYLOAD)
     if (combat.monsterHp <= 0) {
       log.push(`Você derrotou ${combat.monsterTemplate.name}!`);
+
+      // Processar recompensas e terminar combate
+      await this.handleCombatWin(playerId, combat, log);
       this.endCombat(playerId, 'win', log);
-      return this.getCombatUpdatePayload(combat, log);
+      return null; // <-- NÃO RETORNA PAYLOAD DE UPDATE
     }
 
-    // 3. Dano do Monstro -> Jogador (Contra-ataque instantâneo)
+    // 3. Dano do Monstro -> Jogador
     const monsterDamage = this.calculateDamage(
       monsterStats,
       playerStats,
@@ -131,37 +124,36 @@ export class BattleService {
       `${combat.monsterTemplate.name} contra-ataca e causa ${monsterDamage} de dano.`,
     );
 
-    // 4. Jogador Morre?
-    if (combat.playerHp <= 0) {
-      log.push(`Você foi derrotado por ${combat.monsterTemplate.name}...`);
-      this.endCombat(playerId, 'loss', log);
-    }
-
-    // Se o jogador perdeu HP, o DB PRECISA ser atualizado (isso afeta o status na Sidebar)
+    // Atualizar HP do jogador no DB (importante!)
     await this.prisma.character.update({
       where: { id: playerId },
       data: { hp: combat.playerHp },
     });
 
-    // O objeto 'combat' tem o novo HP atualizado do jogador para o payload
+    // 4. Jogador Morre? -> FIM DO COMBATE (SEM RETORNO DE PAYLOAD)
+    if (combat.playerHp <= 0) {
+      log.push(`Você foi derrotado por ${combat.monsterTemplate.name}...`);
+      this.endCombat(playerId, 'loss', log);
+      return null; // <-- NÃO RETORNA PAYLOAD DE UPDATE
+    }
+
+    // 5. Se NINGUÉM morreu, retorna o estado atualizado
     return this.getCombatUpdatePayload(combat, log);
   }
 
-  // --- LÓGICA DE VITÓRIA (NOVA) ---
-
+  // --- LÓGICA DE VITÓRIA ATUALIZADA ---
   private async handleCombatWin(
     playerId: string,
     combat: CombatInstance,
     log: string[],
   ): Promise<void> {
-    const char =
-      combat.playerHp > 0
-        ? await this.prisma.character.findUnique({ where: { id: playerId } })
-        : null;
+    const char = await this.prisma.character.findUnique({
+      where: { id: playerId },
+      include: { inventory: { include: { item: true } } },
+    });
 
-    if (!char) return; // Jogador não existe mais
+    if (!char) return;
 
-    // 1. Calcular Recompensas
     const monsterStats = combat.monsterTemplate.stats as any;
     const xpGanho = monsterStats.xp ?? 50;
     const goldGanho = Math.floor(
@@ -169,57 +161,130 @@ export class BattleService {
         monsterStats.goldMin,
     );
 
-    // 2. Tentar Level Up (usando BigInt para XP)
-    const novoXp = char.xp + BigInt(xpGanho);
-    let novoLevel = char.level;
-    const levelUpMessage: string[] = [];
+    // --- LÓGICA DE LOOT ---
+    const droppedItems: LootDropPayload[] = [];
+    const lootTable = combat.monsterTemplate.lootTable as any;
 
-    // Lógica de Level Up (MVP: A cada 1000 XP)
-    const xpParaProximoLevel = char.level * 1000;
+    if (lootTable?.drops && Array.isArray(lootTable.drops)) {
+      for (const dropInfo of lootTable.drops) {
+        if (Math.random() < (dropInfo.chance ?? 0)) {
+          const quantity = Math.floor(
+            Math.random() * (dropInfo.maxQty - dropInfo.minQty + 1) +
+              dropInfo.minQty,
+          );
 
-    if (novoXp >= BigInt(xpParaProximoLevel)) {
-      novoLevel = char.level + 1;
-      // Recálculo básico de HP/Eco (para a próxima sessão)
-      const novoMaxHp = char.maxHp + 50;
-      const novoMaxEco = char.maxEco + 20;
+          const itemTemplate = await this.prisma.item.findUnique({
+            where: { id: dropInfo.itemId },
+          });
 
-      levelUpMessage.push(`✨ LEVEL UP! Você alcançou o Nível ${novoLevel}!`);
-      log.push(...levelUpMessage); // Adiciona ao log de combate
-
-      // Aplica mudanças no DB
-      await this.prisma.character.update({
-        where: { id: playerId },
-        data: {
-          level: novoLevel,
-          xp: novoXp,
-          maxHp: novoMaxHp,
-          maxEco: novoMaxEco,
-          hp: novoMaxHp, // Cura o jogador
-          eco: novoMaxEco,
-        },
-      });
-    } else {
-      // Atualiza apenas o XP e o Ouro se não houver level up
-      await this.prisma.character.update({
-        where: { id: playerId },
-        data: { xp: novoXp, gold: char.gold + goldGanho },
-      });
+          if (itemTemplate && quantity > 0) {
+            droppedItems.push({
+              itemId: itemTemplate.id,
+              itemName: itemTemplate.name,
+              quantity: quantity,
+            });
+          }
+        }
+      }
     }
 
-    // 3. Informar o jogador via evento PlayerUpdated
-    this.eventEmitter.emit('combat.win', {
-      playerId: playerId,
-      // Enviar o novo XP TOTAL
-      newTotalXp: novoXp.toString(), // <-- MUDANÇA AQUI
-      goldGained: goldGanho,
-      newLevel: levelUpMessage.length > 0 ? novoLevel : undefined,
-    });
+    // --- TRANSAÇÃO PARA ATUALIZAR TUDO ---
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        // 1. Calcular Level Up
+        const novoXp = char.xp + BigInt(xpGanho);
+        let novoLevel = char.level;
+        const levelUpData: any = {};
+        const xpParaProximoLevel = char.level * 1000;
 
-    log.push(`\n[RECOMPENSA] Você ganhou ${xpGanho} XP e ${goldGanho} Ouro!`);
+        if (novoXp >= BigInt(xpParaProximoLevel)) {
+          novoLevel = char.level + 1;
+          const novoMaxHp = char.maxHp + 50;
+          const novoMaxEco = char.maxEco + 20;
+
+          Object.assign(levelUpData, {
+            level: novoLevel,
+            maxHp: novoMaxHp,
+            maxEco: novoMaxEco,
+            hp: novoMaxHp,
+            eco: novoMaxEco,
+          });
+
+          log.push(`✨ LEVEL UP! Você alcançou o Nível ${novoLevel}!`);
+        }
+
+        // 2. Atualizar Character (XP, Gold, Level)
+        await tx.character.update({
+          where: { id: playerId },
+          data: {
+            xp: novoXp,
+            gold: char.gold + goldGanho,
+            ...levelUpData,
+          },
+        });
+
+        // 3. Adicionar Itens ao Inventário
+        for (const drop of droppedItems) {
+          const existingSlot = char.inventory.find(
+            (slot) => slot.itemId === drop.itemId && !slot.isEquipped,
+          );
+
+          if (existingSlot) {
+            await tx.inventorySlot.update({
+              where: { id: existingSlot.id },
+              data: { quantity: existingSlot.quantity + drop.quantity },
+            });
+          } else {
+            await tx.inventorySlot.create({
+              data: {
+                characterId: playerId,
+                itemId: drop.itemId,
+                quantity: drop.quantity,
+                isEquipped: false,
+              },
+            });
+          }
+        }
+      });
+
+      // --- EMITIR EVENTOS APÓS TRANSAÇÃO BEM-SUCEDIDA ---
+
+      // Buscar dados atualizados para o evento
+      const updatedChar = await this.prisma.character.findUnique({
+        where: { id: playerId },
+      });
+
+      if (updatedChar) {
+        // Evento principal com stats atualizados
+        this.eventEmitter.emit('combat.win.stats', {
+          // CORRIGIDO: 'combat.win.stats'
+          playerId: playerId,
+          newTotalXp: updatedChar.xp.toString(),
+          goldGained: goldGanho,
+          newLevel:
+            updatedChar.level > char.level ? updatedChar.level : undefined,
+        });
+      }
+
+      // Evento de loot separado
+      if (droppedItems.length > 0) {
+        this.eventEmitter.emit('combat.win.loot', {
+          playerId: playerId,
+          drops: droppedItems,
+        });
+        log.push(
+          `\n[LOOT] Você obteve: ${droppedItems.map((d) => `${d.quantity}x ${d.itemName}`).join(', ')}`,
+        );
+      }
+
+      log.push(`\n[RECOMPENSA] Você ganhou ${xpGanho} XP e ${goldGanho} Ouro!`);
+    } catch (error) {
+      console.error('[BattleService] Falha na transação de vitória:', error);
+      log.push('\n[ERRO] Falha ao processar recompensas.');
+    }
   }
 
-  // --- FIM DE COMBATE (MODIFICADO) ---
-
+  // --- FIM DE COMBATE (SIMPLIFICADO) ---
   private endCombat(
     playerId: string,
     result: 'win' | 'loss' | 'flee',
@@ -227,11 +292,6 @@ export class BattleService {
   ): void {
     const combat = this.activeCombats.get(playerId);
     if (!combat) return;
-
-    if (result === 'win') {
-      // Chamar a lógica de vitória (que agora emite evento)
-      void this.handleCombatWin(playerId, combat, log);
-    }
 
     this.activeCombats.delete(playerId);
 
@@ -243,7 +303,6 @@ export class BattleService {
   }
 
   // --- UTILS ---
-
   getCombat(playerId: string): CombatInstance | undefined {
     return this.activeCombats.get(playerId);
   }
@@ -260,7 +319,7 @@ export class BattleService {
       monsterHp: combat.monsterHp,
       monsterMaxHp: combat.monsterMaxHp,
       log: log,
-      isPlayerTurn: true, // Simplificamos para o jogador sempre ser o próximo
+      isPlayerTurn: true,
     };
   }
 }
