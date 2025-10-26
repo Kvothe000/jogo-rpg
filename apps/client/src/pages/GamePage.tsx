@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../contexts/SocketContext';
 import { GameChat } from '../components/GameChat'; 
 import { InventoryDisplay } from '../components/InventoryDisplay';
-import type { LootDropPayload, InventorySlotData } from '../../../server/src/game/types/socket-with-auth.type'; // <-- ADICIONE/CORRIJA ESTA LINHA
+import type { LootDropPayload, InventorySlotData } from '../../../server/src/game/types/socket-with-auth.type';
 
 // Tipos necessários
 interface RoomData {
@@ -99,35 +99,92 @@ export function GamePage() {
       setCombatData(null);
     };
 
-    const handlePlayerUpdated = (payload: { 
-      newTotalXp: string; 
-      goldGained: number; 
+    // FUNÇÃO CORRIGIDA: handlePlayerUpdated com LOGS DE DEBUG
+    const handlePlayerUpdated = (payload: {
+      newTotalXp: string; // XP Total como STRING
+      goldGained: number;
       newLevel?: number;
-      newHp?: number;
     }) => {
-      const currentUser = userRef.current;
-      const currentCombatData = combatDataRef.current;
-      
-      // Calcular XP ganho a partir do total
-      const currentXp = currentUser?.character?.xp ?? BigInt(0);
-      const xpGained = BigInt(payload.newTotalXp) - currentXp;
-      
-      const levelMsg = payload.newLevel ? ` e subiu para o Nível ${payload.newLevel}!` : '.';
-      alert(`🎉 RECOMPENSA! Ganhou ${xpGained.toString()} XP e ${payload.goldGained} Ouro${levelMsg}`);
+      console.log('[GamePage DEBUG] handlePlayerUpdated CHAMADO! Payload:', payload);
 
-      // Usar HP do payload se disponível, caso contrário usar HP do combate ou do usuário
-      const updatedHp = payload.newHp ?? currentCombatData?.playerHp ?? currentUser?.character?.hp;
-      
-      updateProfileRef.current({
-        character: {
+      try {
+        const currentUser = userRef.current;
+        console.log('[GamePage DEBUG] currentUser (ref):', currentUser);
+
+        // Calcular XP ganho APENAS para o alert
+        const currentXpBigInt = currentUser?.character?.xp ?? BigInt(0);
+        console.log('[GamePage DEBUG] currentXpBigInt:', currentXpBigInt);
+
+        const newTotalXpBigInt = BigInt(payload.newTotalXp);
+        console.log('[GamePage DEBUG] newTotalXpBigInt:', newTotalXpBigInt);
+
+        // Verificar se a subtração é válida (evitar erro BigInt)
+        let xpGained: bigint;
+        if (typeof currentXpBigInt === 'bigint' && typeof newTotalXpBigInt === 'bigint') {
+          xpGained = newTotalXpBigInt - currentXpBigInt;
+          console.log('[GamePage DEBUG] xpGained calculado:', xpGained);
+        } else {
+          console.error('[GamePage DEBUG] ERRO: Tipos inválidos para cálculo de xpGained!');
+          xpGained = BigInt(0); // Fallback
+        }
+
+        const levelMsg = payload.newLevel ? ` e subiu para o Nível ${payload.newLevel}!` : '.';
+        const alertMsg = `🎉 RECOMPENSA! Ganhou ${xpGained.toString()} XP e ${payload.goldGained} Ouro${levelMsg}`;
+        console.log('[GamePage DEBUG] Mensagem do Alerta:', alertMsg);
+
+        // Mostra o Alerta
+        alert(alertMsg);
+
+        console.log('[GamePage DEBUG] Alerta exibido. Chamando updateProfileRef...');
+
+        // Calcula o novo total de ouro (Number)
+        const newGoldTotal = (currentUser?.character?.gold ?? 0) + payload.goldGained;
+
+        // Calcula o novo HP (considerando cura no level up)
+        let newHp = currentUser?.character?.hp ?? 0; // Pega o HP atual
+        let newMaxHp = currentUser?.character?.maxHp ?? 100;
+        let newEco = currentUser?.character?.eco ?? 50;
+        let newMaxEco = currentUser?.character?.maxEco ?? 50;
+
+        if (payload.newLevel && payload.newLevel > (currentUser?.character?.level ?? 0)) {
+          // Se houve level up, recalcula max stats e cura (como no backend)
+          newMaxHp += 50;
+          newMaxEco += 20;
+          newHp = newMaxHp; // Cura total
+          newEco = newMaxEco; // Restaura Eco total
+        } else if (combatDataRef.current) {
+          // Se não houve level up, pega o HP do último estado de combate
+          newHp = combatDataRef.current.playerHp;
+        }
+
+        console.log('🔄 Atualizando perfil com:', {
           xp: payload.newTotalXp,
-          gold: (currentUser?.character?.gold ?? 0) + payload.goldGained,
-          level: payload.newLevel ?? currentUser?.character?.level,
-          hp: payload.newLevel ? currentUser?.character?.maxHp : updatedHp,
-          maxHp: payload.newLevel ? (currentUser?.character?.maxHp ?? 100) + 50 : currentUser?.character?.maxHp,
-          eco: payload.newLevel ? currentUser?.character?.maxEco : currentUser?.character?.eco,
-        } as any,
-      });
+          gold: newGoldTotal,
+          level: payload.newLevel,
+          hp: newHp,
+          maxHp: payload.newLevel ? newMaxHp : undefined,
+          eco: newEco,
+          maxEco: payload.newLevel ? newMaxEco : undefined,
+        });
+
+        // Chama updateProfile APENAS com os dados que mudaram
+        updateProfileRef.current({
+          character: {
+            xp: payload.newTotalXp, // Envia o XP total como STRING
+            gold: newGoldTotal,     // Envia o Gold total como NUMBER
+            level: payload.newLevel, // Envia o novo Level (NUMBER) ou undefined
+            hp: newHp,              // Envia o HP atualizado (NUMBER)
+            maxHp: payload.newLevel ? newMaxHp : undefined, // Envia SÓ se mudou
+            eco: newEco,            // Envia o Eco atualizado (NUMBER)
+            maxEco: payload.newLevel ? newMaxEco : undefined, // Envia SÓ se mudou
+          } as any,
+        });
+
+        console.log('[GamePage DEBUG] updateProfileRef chamado com sucesso.');
+
+      } catch (error) {
+        console.error('[GamePage DEBUG] ERRO DENTRO de handlePlayerUpdated:', error);
+      }
     };
 
     const handleLootReceived = (payload: { drops: LootDropPayload[] }) => {
@@ -153,7 +210,7 @@ export function GamePage() {
     socket.on('combatEnd', handleCombatEnd);
     socket.on('playerUpdated', handlePlayerUpdated);
     socket.on('lootReceived', handleLootReceived);
-    socket.on('updateInventory', handleUpdateInventory); // NOVO: Ouvinte de inventário
+    socket.on('updateInventory', handleUpdateInventory);
 
     // Pede os dados da sala apenas uma vez quando o socket conecta
     if (isConnected) {
@@ -172,7 +229,7 @@ export function GamePage() {
       socket.off('combatEnd', handleCombatEnd);
       socket.off('playerUpdated', handlePlayerUpdated);
       socket.off('lootReceived', handleLootReceived);
-      socket.off('updateInventory', handleUpdateInventory); // NOVO: Remove ouvinte de inventário
+      socket.off('updateInventory', handleUpdateInventory);
     };
   }, [socket, isConnected]);
 

@@ -73,7 +73,9 @@ export class GameGateway
       const { passwordHash: _removedHash, ...userPayload } = user;
       client.data.user = userPayload;
 
-      console.log(`✅ Cliente Conectado: ${userPayload.email}`);
+      console.log(
+        `✅ Cliente Conectado: ${userPayload.email} (Character ID: ${userPayload.character?.id})`,
+      );
       await this.sendRoomDataToClient(client);
     } catch (error: unknown) {
       let errorMessage = 'Falha na conexão';
@@ -88,7 +90,9 @@ export class GameGateway
   handleDisconnect(client: SocketWithAuth) {
     const user = client.data.user;
     if (user) {
-      console.log(`🔌 Cliente Desconectado: ${user.email}`);
+      console.log(
+        `🔌 Cliente Desconectado: ${user.email} (Character ID: ${user.character?.id})`,
+      );
     } else {
       console.log('🔌 Cliente (não autenticado) Desconectado');
     }
@@ -222,16 +226,25 @@ export class GameGateway
       return;
     }
 
+    console.log(`[GameGateway] combatAttack recebido de player ${playerId}`);
+
     const combatUpdate = await this.battleService.processPlayerAttack(playerId);
 
     if (combatUpdate) {
+      console.log(
+        `[GameGateway] Enviando combatUpdate para player ${playerId}`,
+      );
       client.emit('combatUpdate', combatUpdate);
     } else {
+      console.log(
+        `[GameGateway] Nenhum combatUpdate para player ${playerId} (combate terminou)`,
+      );
       client.emit('serverMessage', 'Você não está em combate.');
     }
   }
 
-  // OUVINTE para Recompensa de Stats (RENOMEADO)
+  // --- OUVINTES DE EVENTOS COM LOGS DETALHADOS ---
+
   @OnEvent('combat.win.stats')
   handleCombatWinStatsEvent(payload: {
     playerId: string;
@@ -239,45 +252,121 @@ export class GameGateway
     goldGained: number;
     newLevel?: number;
   }) {
+    console.log(
+      `[GameGateway DEBUG] Evento combat.win.stats RECEBIDO. Payload:`,
+      payload,
+    );
+
     const clientSocket = this.getClientSocket(payload.playerId);
     if (clientSocket) {
+      console.log(
+        `[GameGateway DEBUG] Socket encontrado para ${payload.playerId} (${clientSocket.id}). Emitindo playerUpdated...`,
+      );
+
       clientSocket.emit('playerUpdated', {
         newTotalXp: payload.newTotalXp,
         goldGained: payload.goldGained,
         newLevel: payload.newLevel,
       });
+
+      console.log(
+        `[GameGateway DEBUG] Evento playerUpdated ENVIADO para ${clientSocket.id}`,
+      );
+    } else {
+      console.error(
+        `[GameGateway DEBUG] ERRO CRÍTICO: Socket NÃO encontrado para ${payload.playerId} ao tentar enviar playerUpdated.`,
+      );
+      console.log(`[GameGateway] Sockets ativos:`, this.getActiveSocketsInfo());
     }
   }
 
-  // NOVO OUVINTE para Recompensa de Loot
   @OnEvent('combat.win.loot')
   handleCombatWinLootEvent(payload: {
     playerId: string;
     drops: LootDropPayload[];
   }) {
+    console.log(
+      `[GameGateway] Evento combat.win.loot RECEBIDO para ${payload.playerId}`,
+      {
+        dropsCount: payload.drops.length,
+        drops: payload.drops,
+      },
+    );
+
     const clientSocket = this.getClientSocket(payload.playerId);
     if (clientSocket) {
+      console.log(
+        `[GameGateway] Socket encontrado para ${payload.playerId}. Emitindo lootReceived...`,
+      );
       clientSocket.emit('lootReceived', { drops: payload.drops });
+      console.log(
+        `[GameGateway] Evento lootReceived enviado para ${payload.playerId}`,
+      );
+    } else {
+      console.error(
+        `[GameGateway] ERRO: Socket NÃO encontrado para ${payload.playerId} em combat.win.loot`,
+      );
+      console.log(`[GameGateway] Sockets ativos:`, this.getActiveSocketsInfo());
     }
   }
 
-  // OUVINTE para Fim de Combate (EXISTENTE)
   @OnEvent('combat.end')
   handleCombatEndEvent(payload: {
     playerId: string;
     result: 'win' | 'loss' | 'flee';
   }) {
+    console.log(
+      `[GameGateway] Evento combat.end (${payload.result}) RECEBIDO para ${payload.playerId}`,
+    );
+
     const clientSocket = this.getClientSocket(payload.playerId);
     if (clientSocket) {
+      console.log(
+        `[GameGateway] Socket encontrado para ${payload.playerId}. Emitindo combatEnd (${payload.result})...`,
+      );
       clientSocket.emit('combatEnd', payload.result);
+      console.log(
+        `[GameGateway] Evento combatEnd enviado para ${payload.playerId}`,
+      );
+    } else {
+      console.error(
+        `[GameGateway] ERRO: Socket NÃO encontrado para ${payload.playerId} em combat.end`,
+      );
+      console.log(`[GameGateway] Sockets ativos:`, this.getActiveSocketsInfo());
     }
   }
 
   getClientSocket(playerId: string): SocketWithAuth | undefined {
-    return Array.from(this.server.sockets.sockets.values()).find(
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      (s) => s.data.user.character?.id === playerId,
-    ) as SocketWithAuth | undefined;
+    const sockets = Array.from(
+      this.server.sockets.sockets.values(),
+    ) as SocketWithAuth[];
+    const foundSocket = sockets.find(
+      (s) => s.data.user?.character?.id === playerId,
+    );
+
+    console.log(
+      `[GameGateway] Buscando socket para player ${playerId}. Encontrado: ${!!foundSocket}`,
+    );
+    if (foundSocket) {
+      console.log(`[GameGateway] Socket encontrado:`, {
+        characterId: foundSocket.data.user?.character?.id,
+        email: foundSocket.data.user?.email,
+      });
+    }
+
+    return foundSocket;
+  }
+
+  // NOVO MÉTODO: Para debug de sockets ativos
+  private getActiveSocketsInfo(): any[] {
+    const sockets = Array.from(
+      this.server.sockets.sockets.values(),
+    ) as SocketWithAuth[];
+    return sockets.map((s) => ({
+      characterId: s.data.user?.character?.id,
+      email: s.data.user?.email,
+      connected: s.connected,
+    }));
   }
 
   private async sendRoomDataToClient(client: SocketWithAuth) {
@@ -321,6 +410,7 @@ export class GameGateway
       });
     }
   }
+
   // --- NOVO OUVINTE PARA PEDIDO DE INVENTÁRIO ---
   @SubscribeMessage('requestInventory')
   async handleRequestInventory(@ConnectedSocket() client: SocketWithAuth) {
@@ -330,7 +420,7 @@ export class GameGateway
       return;
     }
 
-    console.log(`[GameGateway] Recebido requestInventory de ${characterId}`); // Log
+    console.log(`[GameGateway] Recebido requestInventory de ${characterId}`);
 
     const inventorySlots =
       await this.inventoryService.getInventory(characterId);
@@ -338,6 +428,6 @@ export class GameGateway
     client.emit('updateInventory', { slots: inventorySlots });
     console.log(
       `[GameGateway] Emitido updateInventory para ${characterId} com ${inventorySlots.length} slots.`,
-    ); // Log
+    );
   }
 }

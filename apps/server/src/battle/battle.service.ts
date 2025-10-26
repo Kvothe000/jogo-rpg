@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
@@ -62,7 +63,7 @@ export class BattleService {
       monsterHp: stats.hp ?? 100,
       monsterMaxHp: stats.hp ?? 100,
       lastAction: Date.now(),
-      monsterName: '',
+      monsterName: monsterTemplate.name, // CORREÇÃO: usar nome real
     };
 
     this.activeCombats.set(player.character.id, newCombat);
@@ -72,8 +73,13 @@ export class BattleService {
   async processPlayerAttack(
     playerId: string,
   ): Promise<CombatUpdatePayload | null> {
+    console.log(`[BattleService] processPlayerAttack chamado para ${playerId}`);
+
     const combat = this.activeCombats.get(playerId);
-    if (!combat) return null; // Não está em combate
+    if (!combat) {
+      console.log(`[BattleService] Nenhum combate ativo para ${playerId}`);
+      return null;
+    }
 
     const playerStats = await this.prisma.character.findUnique({
       where: { id: playerId },
@@ -86,7 +92,7 @@ export class BattleService {
       },
     });
 
-    if (!playerStats) return null; // Jogador não encontrado
+    if (!playerStats) return null;
 
     const monsterStats = combat.monsterTemplate.stats as any;
     const monsterDefense = monsterStats.defense ?? 0;
@@ -105,10 +111,14 @@ export class BattleService {
 
     // 2. Monstro Morre? -> FIM DO COMBATE (SEM RETORNO DE PAYLOAD)
     if (combat.monsterHp <= 0) {
+      console.log(
+        `[BattleService] Monstro derrotado! Chamando handleCombatWin para ${playerId}`,
+      );
       log.push(`Você derrotou ${combat.monsterTemplate.name}!`);
 
-      // Processar recompensas e terminar combate
+      // PRIMEIRO: Processa recompensas (isso emitirá 'combat.win.stats' e 'combat.win.loot')
       await this.handleCombatWin(playerId, combat, log);
+      // SEGUNDO: Termina o combate (isso emitirá 'combat.end')
       this.endCombat(playerId, 'win', log);
       return null; // <-- NÃO RETORNA PAYLOAD DE UPDATE
     }
@@ -147,18 +157,27 @@ export class BattleService {
     combat: CombatInstance,
     log: string[],
   ): Promise<void> {
+    console.log(`[BattleService] handleCombatWin iniciado para ${playerId}`);
+
     const char = await this.prisma.character.findUnique({
       where: { id: playerId },
       include: { inventory: { include: { item: true } } },
     });
 
-    if (!char) return;
+    if (!char) {
+      console.log(`[BattleService] Personagem não encontrado: ${playerId}`);
+      return;
+    }
 
     const monsterStats = combat.monsterTemplate.stats as any;
     const xpGanho = monsterStats.xp ?? 50;
     const goldGanho = Math.floor(
       Math.random() * (monsterStats.goldMax - monsterStats.goldMin + 1) +
         monsterStats.goldMin,
+    );
+
+    console.log(
+      `[BattleService] Recompensas calculadas: ${xpGanho} XP, ${goldGanho} Ouro`,
     );
 
     // --- LÓGICA DE LOOT ---
@@ -188,7 +207,12 @@ export class BattleService {
       }
     }
 
+    console.log(`[BattleService] Itens dropados: ${droppedItems.length}`);
+
     // --- TRANSAÇÃO PARA ATUALIZAR TUDO ---
+    let transactionSuccess = false;
+    let updatedChar: any = null;
+
     try {
       await this.prisma.$transaction(async (tx) => {
         // 1. Calcular Level Up
@@ -211,10 +235,13 @@ export class BattleService {
           });
 
           log.push(`✨ LEVEL UP! Você alcançou o Nível ${novoLevel}!`);
+          console.log(
+            `[BattleService] Level Up detectado: ${char.level} -> ${novoLevel}`,
+          );
         }
 
         // 2. Atualizar Character (XP, Gold, Level)
-        await tx.character.update({
+        updatedChar = await tx.character.update({
           where: { id: playerId },
           data: {
             xp: novoXp,
@@ -222,6 +249,10 @@ export class BattleService {
             ...levelUpData,
           },
         });
+
+        console.log(
+          `[BattleService] Personagem atualizado no DB: XP=${updatedChar.xp}, Gold=${updatedChar.gold}, Level=${updatedChar.level}`,
+        );
 
         // 3. Adicionar Itens ao Inventário
         for (const drop of droppedItems) {
@@ -245,42 +276,89 @@ export class BattleService {
             });
           }
         }
+
+        transactionSuccess = true;
       });
+    } catch (error) {
+      console.error('[BattleService] Falha na transação de vitória:', error);
+      log.push('\n[ERRO] Falha ao processar recompensas.');
+      return;
+    }
 
-      // --- EMITIR EVENTOS APÓS TRANSAÇÃO BEM-SUCEDIDA ---
+    // --- EMITIR EVENTOS APÓS TRANSAÇÃO BEM-SUCEDIDA ---
+    if (transactionSuccess && updatedChar) {
+      console.log(
+        `[BattleService] Emitindo eventos de vitória para player ${playerId}`,
+      );
 
-      // Buscar dados atualizados para o evento
-      const updatedChar = await this.prisma.character.findUnique({
-        where: { id: playerId },
-      });
+      // Evento principal com stats atualizados
+      try {
+        // DEBUG DETALHADO: Log antes de emitir
+        console.log(
+          `[BattleService DEBUG] PRESTES A EMITIR combat.win.stats para ${playerId}. Payload:`,
+          {
+            playerId: playerId,
+            newTotalXp: updatedChar.xp.toString(),
+            goldGained: goldGanho,
+            newLevel:
+              updatedChar.level > char.level ? updatedChar.level : undefined,
+          },
+        );
 
-      if (updatedChar) {
-        // Evento principal com stats atualizados
         this.eventEmitter.emit('combat.win.stats', {
-          // CORRIGIDO: 'combat.win.stats'
           playerId: playerId,
           newTotalXp: updatedChar.xp.toString(),
           goldGained: goldGanho,
           newLevel:
             updatedChar.level > char.level ? updatedChar.level : undefined,
         });
+
+        // LOG DE CONFIRMAÇÃO
+        console.log(
+          `[BattleService DEBUG] Evento combat.win.stats EMITIDO para ${playerId}.`,
+        );
+      } catch (emitError) {
+        console.error(
+          `[BattleService] Erro ao emitir combat.win.stats:`,
+          emitError,
+        );
       }
 
       // Evento de loot separado
       if (droppedItems.length > 0) {
-        this.eventEmitter.emit('combat.win.loot', {
-          playerId: playerId,
-          drops: droppedItems,
-        });
-        log.push(
-          `\n[LOOT] Você obteve: ${droppedItems.map((d) => `${d.quantity}x ${d.itemName}`).join(', ')}`,
-        );
+        try {
+          console.log(
+            `[BattleService DEBUG] PRESTES A EMITIR combat.win.loot para ${playerId}. Itens:`,
+            droppedItems,
+          );
+
+          this.eventEmitter.emit('combat.win.loot', {
+            playerId: playerId,
+            drops: droppedItems,
+          });
+
+          console.log(
+            `[BattleService DEBUG] Evento combat.win.loot EMITIDO para ${playerId}.`,
+          );
+          log.push(
+            `\n[LOOT] Você obteve: ${droppedItems.map((d) => `${d.quantity}x ${d.itemName}`).join(', ')}`,
+          );
+        } catch (emitError) {
+          console.error(
+            `[BattleService] Erro ao emitir combat.win.loot:`,
+            emitError,
+          );
+        }
       }
 
       log.push(`\n[RECOMPENSA] Você ganhou ${xpGanho} XP e ${goldGanho} Ouro!`);
-    } catch (error) {
-      console.error('[BattleService] Falha na transação de vitória:', error);
-      log.push('\n[ERRO] Falha ao processar recompensas.');
+    } else {
+      console.log(
+        `[BattleService] Transação falhou ou updatedChar não disponível para ${playerId}`,
+      );
+      console.error(
+        `[BattleService DEBUG] ERRO: UpdatedChar não encontrado após transação para ${playerId}! Evento combat.win.stats NÃO emitido.`,
+      );
     }
   }
 
@@ -290,16 +368,38 @@ export class BattleService {
     result: 'win' | 'loss' | 'flee',
     log: string[],
   ): void {
+    console.log(
+      `[BattleService] endCombat chamado para ${playerId} com resultado: ${result}`,
+    );
+
     const combat = this.activeCombats.get(playerId);
-    if (!combat) return;
+    if (!combat) {
+      console.log(
+        `[BattleService] Combate não encontrado para ${playerId} ao tentar finalizar`,
+      );
+      return;
+    }
 
     this.activeCombats.delete(playerId);
+    console.log(`[BattleService] Combate removido da memória para ${playerId}`);
 
     // Emitir evento de fim de combate
-    this.eventEmitter.emit('combat.end', {
-      playerId: playerId,
-      result: result,
-    });
+    try {
+      console.log(
+        `[BattleService DEBUG] PRESTES A EMITIR combat.end para ${playerId}. Resultado: ${result}`,
+      );
+
+      this.eventEmitter.emit('combat.end', {
+        playerId: playerId,
+        result: result,
+      });
+
+      console.log(
+        `[BattleService DEBUG] Evento combat.end EMITIDO para ${playerId}.`,
+      );
+    } catch (emitError) {
+      console.error(`[BattleService] Erro ao emitir combat.end:`, emitError);
+    }
   }
 
   // --- UTILS ---
