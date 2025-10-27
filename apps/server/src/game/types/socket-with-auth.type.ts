@@ -14,6 +14,7 @@ interface ClientToServerEvents {
   requestInventory: () => void;
   equipItem: (payload: { slotId: string }) => void;
   unequipItem: (payload: { slotId: string }) => void;
+  requestKeywords: () => void;
 }
 // 2. Usamos 'Record<string, never>'
 interface ServerToClientEvents {
@@ -43,6 +44,7 @@ interface ServerToClientEvents {
   lootReceived: (payload: { drops: LootDropPayload[] }) => void;
   updateInventory: (payload: { slots: InventorySlotData[] }) => void;
   playerStatsUpdated: (payload: CharacterTotalStats) => void;
+  updateKeywords: (payload: { keywords: KeywordData[] }) => void;
 }
 
 // 3. Usamos 'Record<string, never>'
@@ -79,7 +81,12 @@ export interface CharacterTotalStats {
   totalMaxEco: number; // MaxEco pode ser afectado por Intelligence E itens
   // Adicionar outros stats derivados se necessário (ex: totalDefense, totalAttack)
 }
-
+// NOVO: Tipo para os dados de uma Keyword enviados ao cliente
+interface KeywordData {
+  id: string;
+  name: string;
+  description: string;
+}
 // 5. O tipo final está correto
 export type SocketWithAuth = Socket<
   ClientToServerEvents,
@@ -87,4 +94,4 @@ export type SocketWithAuth = Socket<
   InterServerEvents,
   SocketData
 >;
-export type { CombatUpdatePayload };
+export type { CombatUpdatePayload, KeywordData };

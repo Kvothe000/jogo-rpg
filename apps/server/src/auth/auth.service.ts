@@ -55,10 +55,20 @@ export class AuthService {
                   id: 'cl_starter_room',
                 },
               },
-              // Stats iniciais definidos no schema.prisma (defaults)
+              // --- NOVO: CONECTAR KEYWORDS INICIAIS ---
+              powerKeywords: {
+                create: [
+                  // Usa 'create' para criar as entradas na tabela de junção
+                  { powerKeyword: { connect: { id: 'kw_lamina' } } }, // Conecta à Keyword Lâmina
+                  { powerKeyword: { connect: { id: 'kw_sombra' } } }, // Conecta à Keyword Sombra
+                  // Futuro: Poderíamos permitir que o jogador escolhesse no registo
+                ],
+              },
+              // --- FIM DA ADIÇÃO ---
             },
           },
         },
+        // Stats iniciais definidos no schema.prisma (defaults)
         // Pedimos para o Prisma nos retornar o personagem junto
         include: {
           character: true,

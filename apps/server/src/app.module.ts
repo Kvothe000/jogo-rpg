@@ -8,6 +8,7 @@ import { BattleModule } from './battle/battle.module';
 import { EventEmitterModule } from '@nestjs/event-emitter'; // 1. IMPORTE
 import { InventoryModule } from './inventory/inventory.module';
 import { CharacterStatsModule } from './character-stats/character-stats.module';
+import { EcoModule } from './eco/eco.module';
 
 @Module({
   imports: [
@@ -17,7 +18,8 @@ import { CharacterStatsModule } from './character-stats/character-stats.module';
     BattleModule,
     EventEmitterModule.forRoot(),
     InventoryModule,
-    CharacterStatsModule, // 2. ADICIONE AQUI
+    CharacterStatsModule,
+    EcoModule, // 2. ADICIONE AQUI
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -3,11 +3,13 @@ import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../contexts/SocketContext';
 import { GameChat } from '../components/GameChat';
 import { InventoryDisplay } from '../components/InventoryDisplay';
+import { KeywordsDisplay } from '../components/KeywordsDisplay';
 import type {
     CombatUpdatePayload,
     LootDropPayload,
     InventorySlotData,
-    CharacterTotalStats
+    CharacterTotalStats,
+    KeywordData
 } from '../../../server/src/game/types/socket-with-auth.type';
 
 // Tipos necessários (definidos localmente)
@@ -32,6 +34,9 @@ export function GamePage() {
     const [combatData, setCombatData] = useState<CombatUpdatePayload | null>(null);
     const [inventorySlots, setInventorySlots] = useState<InventorySlotData[]>([]);
     const [showInventory, setShowInventory] = useState(false);
+    // NOVOS ESTADOS PARA KEYWORDS
+    const [keywords, setKeywords] = useState<KeywordData[]>([]);
+    const [showKeywords, setShowKeywords] = useState(false);
 
     // Refs
     const userRef = useRef(user);
@@ -205,6 +210,13 @@ export function GamePage() {
             console.log("[GamePage DEBUG] updateProfile chamado com novos stats.");
         };
 
+        // --- NOVO HANDLER PARA KEYWORDS ---
+        const handleUpdateKeywords = (payload: { keywords: KeywordData[] }) => {
+            console.log("[GamePage DEBUG] Keywords recebidas:", payload.keywords);
+            setKeywords(payload.keywords);
+            setShowKeywords(true); // Mostra automaticamente ao receber
+        };
+
         // Liga os ouvintes
         socket.on('updateRoom', handleUpdateRoom);
         socket.on('npcDialogue', handleNpcDialogue);
@@ -216,6 +228,7 @@ export function GamePage() {
         socket.on('lootReceived', handleLootReceived);
         socket.on('updateInventory', handleUpdateInventory);
         socket.on('playerStatsUpdated', handlePlayerStatsUpdated);
+        socket.on('updateKeywords', handleUpdateKeywords); // NOVO OUVINTE
 
         // Função de limpeza
         return () => {
@@ -230,6 +243,7 @@ export function GamePage() {
             socket.off('lootReceived', handleLootReceived);
             socket.off('updateInventory', handleUpdateInventory);
             socket.off('playerStatsUpdated', handlePlayerStatsUpdated);
+            socket.off('updateKeywords', handleUpdateKeywords); // LIMPA O NOVO OUVINTE
         };
     }, [socket]); // Dependência apenas do socket
 
@@ -262,6 +276,14 @@ export function GamePage() {
         if (socket) {
             console.log("Pedindo inventário...");
             socket.emit('requestInventory');
+        }
+    }, [socket]);
+
+    // NOVA FUNÇÃO para pedir as Keywords
+    const handleRequestKeywords = useCallback(() => {
+        if (socket) {
+            console.log("Pedindo keywords...");
+            socket.emit('requestKeywords');
         }
     }, [socket]);
 
@@ -410,21 +432,20 @@ export function GamePage() {
                     <span style={{ color: 'red' }}> Desligado</span>}
                 </p>
                 
-                {/* BOTÃO PARA ABRIR/PEDIR INVENTÁRIO */}
-                <div style={{ marginTop: '10px' }}>
+                {/* BOTÕES DE AÇÃO DA SIDEBAR */}
+                <div style={{ marginTop: '10px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    {/* Botão Inventário (EXISTENTE) */}
                     <button 
                         onClick={handleRequestInventory} 
                         style={{ 
                             background: 'orange', 
                             border: 'none', 
                             padding: '8px 10px', 
-                            cursor: 'pointer', 
-                            marginRight: '5px' 
+                            cursor: 'pointer'
                         }}
                     >
                         🎒 Inventário
                     </button>
-                    {/* Botão para fechar (opcional) */}
                     {showInventory && (
                         <button 
                             onClick={() => setShowInventory(false)} 
@@ -439,12 +460,47 @@ export function GamePage() {
                             Fechar Inv.
                         </button>
                     )}
+
+                    {/* NOVO BOTÃO PARA KEYWORDS */}
+                    <button 
+                        onClick={handleRequestKeywords} 
+                        style={{ 
+                            background: '#7209B7', 
+                            color: 'white', 
+                            border: 'none', 
+                            padding: '8px 10px', 
+                            cursor: 'pointer' 
+                        }}
+                    >
+                        ✨ Eco/Keywords
+                    </button>
+                    {showKeywords && (
+                        <button 
+                            onClick={() => setShowKeywords(false)} 
+                            style={{ 
+                                background: 'grey', 
+                                color: 'white',
+                                border: 'none',
+                                padding: '8px 10px',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            Fechar Eco
+                        </button>
+                    )}
                 </div>
 
                 {/* RENDERIZAÇÃO CONDICIONAL DO INVENTÁRIO */}
                 {showInventory && (
                     <div style={{ marginTop: '15px' }}>
                         <InventoryDisplay slots={inventorySlots} />
+                    </div>
+                )}
+
+                {/* RENDERIZAÇÃO CONDICIONAL DAS KEYWORDS */}
+                {showKeywords && (
+                    <div style={{ marginTop: '15px' }}>
+                        <KeywordsDisplay keywords={keywords} />
                     </div>
                 )}
 

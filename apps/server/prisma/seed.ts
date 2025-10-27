@@ -9,6 +9,13 @@ const NPC_TEMPLATE_GUARD = 'npc_template_guard';
 const MONSTER_TEMPLATE_SLIME = 'mon_slime_mana';
 const ITEM_SLIME_GOO = 'item_slime_goo';
 const ITEM_SHORT_SWORD = 'item_short_sword';
+// --- NOVOS IDs PARA KEYWORDS ---
+const KW_LAMINA = 'kw_lamina';
+const KW_SOMBRA = 'kw_sombra';
+const KW_FOGO = 'kw_fogo';
+const KW_AGUA = 'kw_agua';
+const KW_LUZ = 'kw_luz';
+// --- FIM DOS IDs ---
 
 async function main() {
   console.log('Iniciando o script de seed v2...');
@@ -168,8 +175,54 @@ async function main() {
     },
   });
   console.log('Facções criadas.');
-
-  console.log('Seed v6 concluído.');
+  // --- 6. NOVO: Criar PowerKeywords Iniciais ---
+  await prisma.powerKeyword.upsert({
+    where: { id: KW_LAMINA },
+    update: {},
+    create: {
+      id: KW_LAMINA,
+      name: 'Lâmina',
+      description: 'O conceito de cortar, perfurar e dividir.',
+    },
+  });
+  await prisma.powerKeyword.upsert({
+    where: { id: KW_SOMBRA },
+    update: {},
+    create: {
+      id: KW_SOMBRA,
+      name: 'Sombra',
+      description: 'O conceito de ocultação, escuridão e ilusão.',
+    },
+  });
+  await prisma.powerKeyword.upsert({
+    where: { id: KW_FOGO },
+    update: {},
+    create: {
+      id: KW_FOGO,
+      name: 'Fogo',
+      description: 'O conceito de calor, combustão e destruição.',
+    },
+  });
+  await prisma.powerKeyword.upsert({
+    where: { id: KW_AGUA },
+    update: {},
+    create: {
+      id: KW_AGUA,
+      name: 'Água',
+      description: 'O conceito de fluidez, cura e pressão.',
+    },
+  });
+  await prisma.powerKeyword.upsert({
+    where: { id: KW_LUZ },
+    update: {},
+    create: {
+      id: KW_LUZ,
+      name: 'Luz',
+      description: 'O conceito de iluminação, pureza e energia radiante.',
+    },
+  });
+  console.log('Keywords iniciais criadas.');
+  console.log('Seed v7 concluído.');
 }
 
 main()

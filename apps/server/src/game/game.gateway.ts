@@ -21,6 +21,7 @@ import { LootDropPayload } from 'src/game/types/socket-with-auth.type';
 import { InventoryService } from 'src/inventory/inventory.service';
 import { HttpException } from '@nestjs/common';
 import { CharacterStatsService } from 'src/character-stats/character-stats.service';
+import { EcoService } from 'src/eco/eco.service'; // 1. IMPORTE O EcoService
 
 @WebSocketGateway({
   cors: {
@@ -39,7 +40,8 @@ export class GameGateway
     private prisma: PrismaService,
     private battleService: BattleService,
     private inventoryService: InventoryService,
-    private characterStatsService: CharacterStatsService, // Serviço injetado
+    private characterStatsService: CharacterStatsService,
+    private ecoService: EcoService, // 2. INJETE O EcoService
   ) {
     const secret = process.env.JWT_SECRET;
     if (!secret) {
@@ -323,6 +325,57 @@ export class GameGateway
     }
   }
 
+  @SubscribeMessage('requestInventory')
+  async handleRequestInventory(@ConnectedSocket() client: SocketWithAuth) {
+    const characterId = client.data.user?.character?.id;
+    if (!characterId) {
+      client.emit('serverMessage', 'Erro: Personagem não encontrado.');
+      return;
+    }
+
+    console.log(`[GameGateway] Recebido requestInventory de ${characterId}`);
+
+    const inventorySlots =
+      await this.inventoryService.getInventory(characterId);
+
+    client.emit('updateInventory', { slots: inventorySlots });
+    console.log(
+      `[GameGateway] Emitido updateInventory para ${characterId} com ${inventorySlots.length} slots.`,
+    );
+  }
+
+  // --- NOVO: OUVINTE PARA PEDIDO DE KEYWORDS ---
+  @SubscribeMessage('requestKeywords')
+  async handleRequestKeywords(@ConnectedSocket() client: SocketWithAuth) {
+    const characterId = client.data.user?.character?.id;
+    if (!characterId) {
+      client.emit('serverMessage', 'Erro: Personagem não encontrado.');
+      console.warn(
+        `[GameGateway] requestKeywords: Character não encontrado para socket ${client.id}`,
+      );
+      return;
+    }
+
+    console.log(`[GameGateway] Recebido requestKeywords de ${characterId}`);
+
+    try {
+      // Chama o serviço para buscar as keywords
+      const keywords = await this.ecoService.getCharacterKeywords(characterId);
+
+      // Envia a lista de volta para o cliente
+      client.emit('updateKeywords', { keywords: keywords });
+      console.log(
+        `[GameGateway] Emitido updateKeywords para ${characterId} com ${keywords.length} keywords.`,
+      );
+    } catch (error) {
+      console.error(
+        `[GameGateway] Erro ao buscar keywords para ${characterId}:`,
+        error,
+      );
+      client.emit('serverMessage', 'Erro ao buscar suas Keywords.');
+    }
+  }
+
   // --- OUVINTES DE EVENTOS ---
 
   @OnEvent('combat.win.stats')
@@ -416,7 +469,6 @@ export class GameGateway
     }
   }
 
-  // --- NOVO OUVINTE PARA MUDANÇA DE EQUIPAMENTO ---
   @OnEvent('character.equipment.changed')
   async handleEquipmentChanged(payload: { characterId: string }) {
     const { characterId } = payload;
@@ -528,24 +580,5 @@ export class GameGateway
         npcs: npcsInRoom,
       });
     }
-  }
-
-  @SubscribeMessage('requestInventory')
-  async handleRequestInventory(@ConnectedSocket() client: SocketWithAuth) {
-    const characterId = client.data.user?.character?.id;
-    if (!characterId) {
-      client.emit('serverMessage', 'Erro: Personagem não encontrado.');
-      return;
-    }
-
-    console.log(`[GameGateway] Recebido requestInventory de ${characterId}`);
-
-    const inventorySlots =
-      await this.inventoryService.getInventory(characterId);
-
-    client.emit('updateInventory', { slots: inventorySlots });
-    console.log(
-      `[GameGateway] Emitido updateInventory para ${characterId} com ${inventorySlots.length} slots.`,
-    );
   }
 }
