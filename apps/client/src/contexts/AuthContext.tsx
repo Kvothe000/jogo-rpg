@@ -4,6 +4,7 @@ import {
   useContext,
   useState,
   useEffect,
+  useCallback,
 } from 'react';
 import { api } from '../services/api';
 import type { UserPayload } from '../../../server/src/auth/types/user-payload.type';
@@ -76,83 +77,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isAuthenticated = !!token && !!user;
 
-  const updateProfile = (newUserData: Partial<UserPayload>) => {
-  setUser((prevUser) => {
-    // Se não há usuário anterior, não faz nada
-    if (!prevUser) return null;
-    // Se não há personagem anterior E não há dados novos de personagem, não faz nada
-    if (!prevUser.character && !newUserData.character) return prevUser;
+  const updateProfile = useCallback((newUserData: Partial<UserPayload>) => {
+    setUser((prevUser) => {
+      if (!prevUser) return null;
+      // Se não há personagem anterior E não há dados novos de personagem, não faz nada
+      if (!prevUser.character && !newUserData.character) return prevUser;
 
-    // Começa com uma cópia do usuário anterior
-    const nextUser = { ...prevUser };
+      const nextUser = { ...prevUser };
 
-    // Se há dados de personagem para atualizar
-    if (newUserData.character) {
-        // Se o usuário anterior não tinha personagem, cria um objeto vazio
-        const prevCharacter = prevUser.character ?? {} as Partial<UserPayload['character']>;
-        // Começa com uma cópia do personagem anterior
-        const nextCharacter = { ...prevCharacter };
+      if (newUserData.character) {
+        const prevCharacter = prevUser.character ?? {} as any;
+        // Começa com uma cópia, MAS aplica os novos dados PRIMEIRO
+        // para que as propriedades como 'strength' sejam as totais, se vierem
+        const nextCharacter = { ...prevCharacter, ...newUserData.character };
 
-        // Aplica atualizações UMA A UMA, garantindo tipos
+        // Garante que o XP é BigInt
         if (newUserData.character.xp !== undefined) {
-            // Converte a STRING recebida para BigInt para o estado
-            nextCharacter.xp = BigInt(newUserData.character.xp);
+          nextCharacter.xp = BigInt(newUserData.character.xp);
         }
-        if (newUserData.character.gold !== undefined) {
-            nextCharacter.gold = newUserData.character.gold; // NUMBER
-        }
-        if (newUserData.character.level !== undefined) {
-            nextCharacter.level = newUserData.character.level; // NUMBER
-        }
-        if (newUserData.character.hp !== undefined) {
-            nextCharacter.hp = newUserData.character.hp; // NUMBER
-        }
-        if (newUserData.character.maxHp !== undefined) {
-            nextCharacter.maxHp = newUserData.character.maxHp; // NUMBER
-        }
-        if (newUserData.character.eco !== undefined) {
-            nextCharacter.eco = newUserData.character.eco; // NUMBER
-        }
-        if (newUserData.character.maxEco !== undefined) {
-            nextCharacter.maxEco = newUserData.character.maxEco; // NUMBER
-        }
-        // Adicione outras propriedades do Character se precisar atualizar
+        
+        // Garante que outras propriedades obrigatórias existam (fallbacks)
+        nextCharacter.id = nextCharacter.id ?? prevCharacter.id ?? '';
+        nextCharacter.name = nextCharacter.name ?? prevCharacter.name ?? '';
+        nextCharacter.createdAt = nextCharacter.createdAt ?? prevCharacter.createdAt ?? new Date();
+        nextCharacter.mapId = nextCharacter.mapId ?? prevCharacter.mapId ?? '';
+        nextCharacter.userId = nextCharacter.userId ?? prevCharacter.userId ?? '';
+        nextCharacter.level = nextCharacter.level ?? prevCharacter.level ?? 1;
+        nextCharacter.xp = nextCharacter.xp ?? prevCharacter.xp ?? BigInt(0);
+        nextCharacter.gold = nextCharacter.gold ?? prevCharacter.gold ?? 0;
+        nextCharacter.status = nextCharacter.status ?? prevCharacter.status ?? 'LOCKED';
+        nextCharacter.hp = nextCharacter.hp ?? prevCharacter.hp ?? 100;
+        nextCharacter.maxHp = nextCharacter.maxHp ?? prevCharacter.maxHp ?? 100;
+        nextCharacter.eco = nextCharacter.eco ?? prevCharacter.eco ?? 50;
+        nextCharacter.maxEco = nextCharacter.maxEco ?? prevCharacter.maxEco ?? 50;
+        nextCharacter.strength = nextCharacter.strength ?? prevCharacter.strength ?? 5;
+        nextCharacter.dexterity = nextCharacter.dexterity ?? prevCharacter.dexterity ?? 5;
+        nextCharacter.intelligence = nextCharacter.intelligence ?? prevCharacter.intelligence ?? 5;
+        nextCharacter.constitution = nextCharacter.constitution ?? prevCharacter.constitution ?? 5;
 
-        // Garante que todas as propriedades OBRIGATÓRIAS existam
-        // (Isso é importante se prevCharacter era um objeto vazio)
-        nextUser.character = {
-            id: nextCharacter.id ?? '', // Use fallbacks se necessário
-            name: nextCharacter.name ?? '',
-            createdAt: nextCharacter.createdAt ?? new Date(),
-            mapId: nextCharacter.mapId ?? '',
-            userId: nextCharacter.userId ?? '',
-            level: nextCharacter.level ?? 1,
-            xp: nextCharacter.xp ?? BigInt(0),
-            gold: nextCharacter.gold ?? 0,
-            status: nextCharacter.status ?? 'LOCKED', // Use um Enum real se importado
-            hp: nextCharacter.hp ?? 100,
-            maxHp: nextCharacter.maxHp ?? 100,
-            eco: nextCharacter.eco ?? 50,
-            maxEco: nextCharacter.maxEco ?? 50,
-            strength: nextCharacter.strength ?? 5,
-            dexterity: nextCharacter.dexterity ?? 5,
-            intelligence: nextCharacter.intelligence ?? 5,
-            constitution: nextCharacter.constitution ?? 5,
-        };
+        nextUser.character = nextCharacter as UserPayload['character'];
+      } else if (prevUser.character) {
+        nextUser.character = prevUser.character;
+      }
 
-    } else if (prevUser.character) {
-         // Se não há dados novos de personagem, mantém o personagem antigo
-         nextUser.character = prevUser.character;
-    }
-
-
-    // Aplica outras atualizações no User (se houver)
-    // if (newUserData.email) nextUser.email = newUserData.email;
-
-    // Retorna o novo objeto de estado completo
-    return nextUser as UserPayload; // Afirma o tipo final
-  });
-};
+      return nextUser as UserPayload;
+    });
+  }, []);
 
   return (
     <AuthContext.Provider

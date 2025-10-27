@@ -4,6 +4,7 @@ import { AuthModule } from 'src/auth/auth.module';
 import { PrismaModule } from 'src/prisma/prisma.module';
 import { BattleModule } from 'src/battle/battle.module';
 import { InventoryModule } from 'src/inventory/inventory.module';
+import { CharacterStatsModule } from 'src/character-stats/character-stats.module';
 
 @Module({
   imports: [
@@ -11,6 +12,7 @@ import { InventoryModule } from 'src/inventory/inventory.module';
     PrismaModule,
     forwardRef(() => BattleModule),
     InventoryModule, // 2. USE forwardRef AQUI
+    CharacterStatsModule,
   ],
   providers: [GameGateway],
   // exports: [GameGateway], // Mantenha comentado/removido

@@ -8,6 +8,7 @@ const ROOM_ID_HALLWAY = 'cl_hallway_01';
 const NPC_TEMPLATE_GUARD = 'npc_template_guard';
 const MONSTER_TEMPLATE_SLIME = 'mon_slime_mana';
 const ITEM_SLIME_GOO = 'item_slime_goo';
+const ITEM_SHORT_SWORD = 'item_short_sword';
 
 async function main() {
   console.log('Iniciando o script de seed v2...');
@@ -84,7 +85,10 @@ async function main() {
     update: {
       // ATUALIZA A LOOT TABLE
       lootTable: {
-        drops: [{ itemId: ITEM_SLIME_GOO, chance: 0.75, minQty: 1, maxQty: 3 }], // 75% chance de dropar 1-3 Gosmas
+        drops: [
+          { itemId: ITEM_SLIME_GOO, chance: 0.75, minQty: 1, maxQty: 3 },
+          { itemId: ITEM_SHORT_SWORD, chance: 0.25, minQty: 1, maxQty: 1 },
+        ], // 75% chance de dropar 1-3 Gosmas
       },
     },
     create: {
@@ -93,7 +97,7 @@ async function main() {
       description: 'Uma bolha de mana gelatinosa, Rank E.',
       isHostile: true,
       stats: {
-        hp: 50,
+        hp: 80,
         attack: 10,
         defense: 5,
         xp: 50,
@@ -102,7 +106,10 @@ async function main() {
       },
       lootTable: {
         // DEFINE NA CRIAÇÃO TAMBÉM
-        drops: [{ itemId: ITEM_SLIME_GOO, chance: 0.75, minQty: 1, maxQty: 3 }],
+        drops: [
+          { itemId: ITEM_SLIME_GOO, chance: 0.75, minQty: 1, maxQty: 3 },
+          { itemId: ITEM_SHORT_SWORD, chance: 0.25, minQty: 1, maxQty: 1 },
+        ],
       },
     },
   });
@@ -133,7 +140,24 @@ async function main() {
         'Busca controlar a Interface e caça Renegados por vê-los como anomalias perigosas.',
     },
   });
-
+  // --- 5. NOVO: Criar o Item Equipável (Espada) ---
+  await prisma.item.upsert({
+    where: { id: ITEM_SHORT_SWORD },
+    update: {},
+    create: {
+      id: ITEM_SHORT_SWORD,
+      name: 'Espada Curta Gasta',
+      description: 'Uma espada curta básica, um pouco enferrujada.',
+      type: 'EQUIPMENT', // É um equipamento
+      slot: 'WEAPON', // Vai no slot de Arma (definido no Enum EquipSlot em schema.prisma)
+      stats: {
+        // Stats que dará (usaremos depois)
+        strength: 5, // Bónus de +5 de Força
+      },
+      price: 25, // Preço de venda
+    },
+  });
+  console.log('Item Equipável criado: Espada Curta Gasta');
   await prisma.faction.upsert({
     where: { name: 'Os Livres' },
     update: {},
@@ -145,7 +169,7 @@ async function main() {
   });
   console.log('Facções criadas.');
 
-  console.log('Seed v2 concluído.');
+  console.log('Seed v6 concluído.');
 }
 
 main()

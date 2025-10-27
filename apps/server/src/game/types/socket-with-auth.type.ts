@@ -12,6 +12,8 @@ interface ClientToServerEvents {
   startCombat: () => void;
   combatAttack: () => void;
   requestInventory: () => void;
+  equipItem: (payload: { slotId: string }) => void;
+  unequipItem: (payload: { slotId: string }) => void;
 }
 // 2. Usamos 'Record<string, never>'
 interface ServerToClientEvents {
@@ -40,6 +42,7 @@ interface ServerToClientEvents {
   }) => void;
   lootReceived: (payload: { drops: LootDropPayload[] }) => void;
   updateInventory: (payload: { slots: InventorySlotData[] }) => void;
+  playerStatsUpdated: (payload: CharacterTotalStats) => void;
 }
 
 // 3. Usamos 'Record<string, never>'
@@ -66,6 +69,16 @@ export interface InventorySlotData {
   isEquipped: boolean;
   // Futuro: itemStats: Record<string, number>;
 }
+export interface CharacterTotalStats {
+  // Inclui APENAS os stats que podem ser modificados por equipamento
+  totalStrength: number;
+  totalDexterity: number;
+  totalIntelligence: number;
+  totalConstitution: number;
+  totalMaxHp: number; // MaxHP pode ser afectado por Constitution E itens
+  totalMaxEco: number; // MaxEco pode ser afectado por Intelligence E itens
+  // Adicionar outros stats derivados se necessário (ex: totalDefense, totalAttack)
+}
 
 // 5. O tipo final está correto
 export type SocketWithAuth = Socket<
@@ -74,3 +87,4 @@ export type SocketWithAuth = Socket<
   InterServerEvents,
   SocketData
 >;
+export type { CombatUpdatePayload };

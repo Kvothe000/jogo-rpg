@@ -19,6 +19,8 @@ import { BattleService } from 'src/battle/battle.service';
 import { OnEvent } from '@nestjs/event-emitter';
 import { LootDropPayload } from 'src/game/types/socket-with-auth.type';
 import { InventoryService } from 'src/inventory/inventory.service';
+import { HttpException } from '@nestjs/common';
+import { CharacterStatsService } from 'src/character-stats/character-stats.service';
 
 @WebSocketGateway({
   cors: {
@@ -37,6 +39,7 @@ export class GameGateway
     private prisma: PrismaService,
     private battleService: BattleService,
     private inventoryService: InventoryService,
+    private characterStatsService: CharacterStatsService, // Serviço injetado
   ) {
     const secret = process.env.JWT_SECRET;
     if (!secret) {
@@ -189,6 +192,83 @@ export class GameGateway
     });
   }
 
+  @SubscribeMessage('equipItem')
+  async handleEquipItem(
+    @ConnectedSocket() client: SocketWithAuth,
+    @MessageBody() payload: { slotId: string },
+  ) {
+    const characterId = client.data.user?.character?.id;
+    const slotIdToEquip = payload?.slotId;
+
+    if (!characterId || !slotIdToEquip) {
+      client.emit('serverMessage', 'Erro: Dados inválidos para equipar item.');
+      return;
+    }
+
+    console.log(
+      `[GameGateway] Recebido equipItem: char=${characterId}, slot=${slotIdToEquip}`,
+    );
+
+    try {
+      await this.inventoryService.equipItem(characterId, slotIdToEquip);
+
+      const updatedInventory =
+        await this.inventoryService.getInventory(characterId);
+      client.emit('updateInventory', { slots: updatedInventory });
+      client.emit('serverMessage', 'Item equipado!');
+    } catch (error) {
+      console.error(
+        `[GameGateway] Erro ao equipar item (slot ${slotIdToEquip}):`,
+        error,
+      );
+      const message =
+        error instanceof HttpException
+          ? error.message
+          : 'Erro desconhecido ao tentar equipar o item.';
+      client.emit('serverMessage', `Falha ao equipar: ${message}`);
+    }
+  }
+
+  @SubscribeMessage('unequipItem')
+  async handleUnequipItem(
+    @ConnectedSocket() client: SocketWithAuth,
+    @MessageBody() payload: { slotId: string },
+  ) {
+    const characterId = client.data.user?.character?.id;
+    const slotIdToUnequip = payload?.slotId;
+
+    if (!characterId || !slotIdToUnequip) {
+      client.emit(
+        'serverMessage',
+        'Erro: Dados inválidos para desequipar item.',
+      );
+      return;
+    }
+
+    console.log(
+      `[GameGateway] Recebido unequipItem: char=${characterId}, slot=${slotIdToUnequip}`,
+    );
+
+    try {
+      await this.inventoryService.unequipItem(characterId, slotIdToUnequip);
+
+      const updatedInventory =
+        await this.inventoryService.getInventory(characterId);
+      client.emit('updateInventory', { slots: updatedInventory });
+      client.emit('serverMessage', 'Item desequipado!');
+    } catch (error) {
+      console.error(
+        `[GameGateway] Erro ao desequipar item (slot ${slotIdToUnequip}):`,
+        error,
+      );
+      const message =
+        error instanceof HttpException
+          ? error.message
+          : 'Erro desconhecido ao tentar desequipar o item.';
+      client.emit('serverMessage', `Falha ao desequipar: ${message}`);
+    }
+  }
+
   @SubscribeMessage('startCombat')
   async handleStartCombat(@ConnectedSocket() client: SocketWithAuth) {
     if (!client.data.user.character) {
@@ -243,7 +323,7 @@ export class GameGateway
     }
   }
 
-  // --- OUVINTES DE EVENTOS COM LOGS DETALHADOS ---
+  // --- OUVINTES DE EVENTOS ---
 
   @OnEvent('combat.win.stats')
   handleCombatWinStatsEvent(payload: {
@@ -336,6 +416,45 @@ export class GameGateway
     }
   }
 
+  // --- NOVO OUVINTE PARA MUDANÇA DE EQUIPAMENTO ---
+  @OnEvent('character.equipment.changed')
+  async handleEquipmentChanged(payload: { characterId: string }) {
+    const { characterId } = payload;
+    console.log(
+      `[GameGateway] Evento character.equipment.changed RECEBIDO para ${characterId}`,
+    );
+
+    try {
+      // Calcula os novos stats totais
+      const totalStats =
+        await this.characterStatsService.calculateTotalStats(characterId);
+
+      // Encontra o socket do jogador
+      const clientSocket = this.getClientSocket(characterId);
+      if (clientSocket) {
+        console.log(
+          `[GameGateway] Emitindo playerStatsUpdated para ${characterId} (${clientSocket.id})`,
+        );
+        // Emite o evento para o frontend com os stats calculados
+        clientSocket.emit('playerStatsUpdated', totalStats);
+      } else {
+        console.warn(
+          `[GameGateway] Socket não encontrado para ${characterId} em equipment.changed`,
+        );
+      }
+    } catch (error) {
+      console.error(
+        `[GameGateway] Erro ao processar equipment.changed para ${characterId}:`,
+        error,
+      );
+      // Opcional: Enviar uma serverMessage de erro para o cliente, se o socket ainda existir
+      this.getClientSocket(characterId)?.emit(
+        'serverMessage',
+        'Erro ao atualizar stats após equipar/desequipar.',
+      );
+    }
+  }
+
   getClientSocket(playerId: string): SocketWithAuth | undefined {
     const sockets = Array.from(
       this.server.sockets.sockets.values(),
@@ -357,7 +476,7 @@ export class GameGateway
     return foundSocket;
   }
 
-  // NOVO MÉTODO: Para debug de sockets ativos
+  // Método para debug de sockets ativos
   private getActiveSocketsInfo(): any[] {
     const sockets = Array.from(
       this.server.sockets.sockets.values(),
@@ -411,7 +530,6 @@ export class GameGateway
     }
   }
 
-  // --- NOVO OUVINTE PARA PEDIDO DE INVENTÁRIO ---
   @SubscribeMessage('requestInventory')
   async handleRequestInventory(@ConnectedSocket() client: SocketWithAuth) {
     const characterId = client.data.user?.character?.id;

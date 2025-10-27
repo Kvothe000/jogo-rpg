@@ -10,6 +10,7 @@ import { CombatInstance, CombatUpdatePayload } from './types/combat.type';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Item } from '@prisma/client';
 import { LootDropPayload } from 'src/game/types/socket-with-auth.type';
+import { CharacterStatsService } from 'src/character-stats/character-stats.service';
 
 @Injectable()
 export class BattleService {
@@ -18,22 +19,24 @@ export class BattleService {
   constructor(
     private prisma: PrismaService,
     private eventEmitter: EventEmitter2,
+    private characterStatsService: CharacterStatsService, // Serviço injetado
   ) {}
 
+  // --- LÓGICA DE DANO MELHORADA ---
   private calculateDamage(
-    attackerStats: any,
-    defenderStats: any,
+    attackerTotalStats: any,
+    defenderTotalStats: any,
     attackerIsPlayer: boolean,
+    attackerLevel: number,
   ): number {
     const attackPower = attackerIsPlayer
-      ? attackerStats.strength
-      : attackerStats.attack;
-    const level = attackerIsPlayer ? attackerStats.level : 1;
+      ? attackerTotalStats.totalStrength
+      : attackerTotalStats.attack;
     const defense = attackerIsPlayer
-      ? defenderStats.defense
-      : defenderStats.constitution;
+      ? defenderTotalStats.defense
+      : defenderTotalStats.totalConstitution;
 
-    const baseDamage = (attackPower ?? 5) + (level ?? 1) * 2;
+    const baseDamage = (attackPower ?? 5) + (attackerLevel ?? 1) * 2;
     const finalDamage = Math.max(1, baseDamage - (defense ?? 0));
 
     return Math.floor(finalDamage);
@@ -63,7 +66,7 @@ export class BattleService {
       monsterHp: stats.hp ?? 100,
       monsterMaxHp: stats.hp ?? 100,
       lastAction: Date.now(),
-      monsterName: monsterTemplate.name, // CORREÇÃO: usar nome real
+      monsterName: monsterTemplate.name,
     };
 
     this.activeCombats.set(player.character.id, newCombat);
@@ -81,77 +84,95 @@ export class BattleService {
       return null;
     }
 
-    const playerStats = await this.prisma.character.findUnique({
-      where: { id: playerId },
-      select: {
-        strength: true,
-        level: true,
-        constitution: true,
-        hp: true,
-        maxHp: true,
-      },
-    });
+    try {
+      // CALCULA STATS TOTAIS DO JOGADOR
+      const playerTotalStats =
+        await this.characterStatsService.calculateTotalStats(playerId);
+      const playerLevel =
+        (
+          await this.prisma.character.findUnique({
+            where: { id: playerId },
+            select: { level: true },
+          })
+        )?.level ?? 1;
 
-    if (!playerStats) return null;
+      const monsterStats = combat.monsterTemplate.stats as any;
+      // Stats totais do monstro = stats base (não tem equipamento)
+      const monsterTotalStats = {
+        totalConstitution: monsterStats.constitution ?? 5,
+        defense: monsterStats.defense ?? 0,
+        attack: monsterStats.attack ?? 0,
+      };
 
-    const monsterStats = combat.monsterTemplate.stats as any;
-    const monsterDefense = monsterStats.defense ?? 0;
+      const log: string[] = [];
 
-    // 1. Dano do Jogador -> Monstro
-    const playerDamage = this.calculateDamage(
-      playerStats,
-      { defense: monsterDefense },
-      true,
-    );
-    combat.monsterHp = Math.max(0, combat.monsterHp - playerDamage);
-
-    const log: string[] = [
-      `Você ataca ${combat.monsterTemplate.name} e causa ${playerDamage} de dano.`,
-    ];
-
-    // 2. Monstro Morre? -> FIM DO COMBATE (SEM RETORNO DE PAYLOAD)
-    if (combat.monsterHp <= 0) {
-      console.log(
-        `[BattleService] Monstro derrotado! Chamando handleCombatWin para ${playerId}`,
+      // 1. Dano do Jogador -> Monstro (Usa stats totais)
+      const playerDamage = this.calculateDamage(
+        playerTotalStats,
+        monsterTotalStats,
+        true,
+        playerLevel,
       );
-      log.push(`Você derrotou ${combat.monsterTemplate.name}!`);
+      combat.monsterHp = Math.max(0, combat.monsterHp - playerDamage);
 
-      // PRIMEIRO: Processa recompensas (isso emitirá 'combat.win.stats' e 'combat.win.loot')
-      await this.handleCombatWin(playerId, combat, log);
-      // SEGUNDO: Termina o combate (isso emitirá 'combat.end')
-      this.endCombat(playerId, 'win', log);
-      return null; // <-- NÃO RETORNA PAYLOAD DE UPDATE
+      log.push(
+        `Você ataca ${combat.monsterTemplate.name} e causa ${playerDamage} de dano.`,
+      );
+
+      // 2. Monstro Morre? -> FIM DO COMBATE (SEM RETORNO DE PAYLOAD)
+      if (combat.monsterHp <= 0) {
+        console.log(
+          `[BattleService] Monstro derrotado! Chamando handleCombatWin para ${playerId}`,
+        );
+        log.push(`Você derrotou ${combat.monsterTemplate.name}!`);
+
+        await this.handleCombatWin(playerId, combat, log);
+        this.endCombat(playerId, 'win', log);
+        return null;
+      }
+
+      // 3. Dano do Monstro -> Jogador (Usa stats totais)
+      const monsterDamage = this.calculateDamage(
+        monsterStats,
+        playerTotalStats,
+        false,
+        1, // Nível do monstro é 1
+      );
+      combat.playerHp = Math.max(0, combat.playerHp - monsterDamage);
+      log.push(
+        `${combat.monsterTemplate.name} contra-ataca e causa ${monsterDamage} de dano.`,
+      );
+
+      // Atualizar HP do jogador no DB
+      await this.prisma.character.update({
+        where: { id: playerId },
+        data: { hp: combat.playerHp },
+      });
+
+      // 4. Jogador Morre? -> FIM DO COMBATE (SEM RETORNO DE PAYLOAD)
+      if (combat.playerHp <= 0) {
+        log.push(`Você foi derrotado por ${combat.monsterTemplate.name}...`);
+        this.endCombat(playerId, 'loss', log);
+        return null;
+      }
+
+      // 5. Se NINGUÉM morreu, retorna o estado atualizado
+      return this.getCombatUpdatePayload(combat, log);
+    } catch (error) {
+      console.error(
+        `[BattleService] Erro ao processar ataque para ${playerId}:`,
+        error,
+      );
+      // Notifica o jogador sobre o erro interno
+      this.eventEmitter.emit('combat.error', {
+        playerId: playerId,
+        message: 'Erro interno ao processar ataque.',
+      });
+      return null;
     }
-
-    // 3. Dano do Monstro -> Jogador
-    const monsterDamage = this.calculateDamage(
-      monsterStats,
-      playerStats,
-      false,
-    );
-    combat.playerHp = Math.max(0, combat.playerHp - monsterDamage);
-    log.push(
-      `${combat.monsterTemplate.name} contra-ataca e causa ${monsterDamage} de dano.`,
-    );
-
-    // Atualizar HP do jogador no DB (importante!)
-    await this.prisma.character.update({
-      where: { id: playerId },
-      data: { hp: combat.playerHp },
-    });
-
-    // 4. Jogador Morre? -> FIM DO COMBATE (SEM RETORNO DE PAYLOAD)
-    if (combat.playerHp <= 0) {
-      log.push(`Você foi derrotado por ${combat.monsterTemplate.name}...`);
-      this.endCombat(playerId, 'loss', log);
-      return null; // <-- NÃO RETORNA PAYLOAD DE UPDATE
-    }
-
-    // 5. Se NINGUÉM morreu, retorna o estado atualizado
-    return this.getCombatUpdatePayload(combat, log);
   }
 
-  // --- LÓGICA DE VITÓRIA ATUALIZADA ---
+  // --- LÓGICA DE VITÓRIA ---
   private async handleCombatWin(
     playerId: string,
     combat: CombatInstance,
@@ -293,7 +314,6 @@ export class BattleService {
 
       // Evento principal com stats atualizados
       try {
-        // DEBUG DETALHADO: Log antes de emitir
         console.log(
           `[BattleService DEBUG] PRESTES A EMITIR combat.win.stats para ${playerId}. Payload:`,
           {
@@ -313,7 +333,6 @@ export class BattleService {
             updatedChar.level > char.level ? updatedChar.level : undefined,
         });
 
-        // LOG DE CONFIRMAÇÃO
         console.log(
           `[BattleService DEBUG] Evento combat.win.stats EMITIDO para ${playerId}.`,
         );
@@ -362,7 +381,7 @@ export class BattleService {
     }
   }
 
-  // --- FIM DE COMBATE (SIMPLIFICADO) ---
+  // --- FIM DE COMBATE ---
   private endCombat(
     playerId: string,
     result: 'win' | 'loss' | 'flee',

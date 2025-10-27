@@ -7,6 +7,7 @@ import { GameModule } from './game/game.module';
 import { BattleModule } from './battle/battle.module';
 import { EventEmitterModule } from '@nestjs/event-emitter'; // 1. IMPORTE
 import { InventoryModule } from './inventory/inventory.module';
+import { CharacterStatsModule } from './character-stats/character-stats.module';
 
 @Module({
   imports: [
@@ -15,7 +16,8 @@ import { InventoryModule } from './inventory/inventory.module';
     GameModule,
     BattleModule,
     EventEmitterModule.forRoot(),
-    InventoryModule, // 2. ADICIONE AQUI
+    InventoryModule,
+    CharacterStatsModule, // 2. ADICIONE AQUI
   ],
   controllers: [AppController],
   providers: [AppService],
