@@ -9,6 +9,8 @@ import { EventEmitterModule } from '@nestjs/event-emitter'; // 1. IMPORTE
 import { InventoryModule } from './inventory/inventory.module';
 import { CharacterStatsModule } from './character-stats/character-stats.module';
 import { EcoModule } from './eco/eco.module';
+import { SkillModule } from './skill/skill.module';
+import { SkillService } from './skill/skill.service';
 
 @Module({
   imports: [
@@ -19,9 +21,10 @@ import { EcoModule } from './eco/eco.module';
     EventEmitterModule.forRoot(),
     InventoryModule,
     CharacterStatsModule,
-    EcoModule, // 2. ADICIONE AQUI
+    EcoModule,
+    SkillModule, // 2. ADICIONE AQUI
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, SkillService],
 })
 export class AppModule {}

@@ -3,14 +3,78 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-import { Injectable } from '@nestjs/common';
+import {
+  Injectable,
+  HttpException,
+  HttpStatus,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import type { UserPayload } from 'src/auth/types/user-payload.type';
 import { CombatInstance, CombatUpdatePayload } from './types/combat.type';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Item } from '@prisma/client';
 import { LootDropPayload } from 'src/game/types/socket-with-auth.type';
 import { CharacterStatsService } from 'src/character-stats/character-stats.service';
+import { SkillService } from 'src/skill/skill.service';
+import { Prisma, Skill } from '@prisma/client';
+import { JsonValue } from '@prisma/client/runtime/library';
+
+// --- Definição (simplificada) dos tipos de efeito que esperamos no JSON ---
+interface EffectBase {
+  type: string;
+  chance?: number;
+}
+interface DamageEffect extends EffectBase {
+  type: 'damage';
+  value: number;
+  element?: string;
+  bonusCriticalChance?: number;
+  bonusVsType?: string[];
+  defensePenetration?: number;
+}
+interface StatusEffect extends EffectBase {
+  type: 'status';
+  effect: string;
+  duration: number;
+}
+interface HealEffect extends EffectBase {
+  type: 'heal';
+  value: number;
+}
+interface BuffDebuffEffect extends EffectBase {
+  type: 'buff' | 'debuff';
+  stat: string;
+  value: number;
+  duration: number;
+}
+interface AoEEffect extends EffectBase {
+  type: 'aoe';
+  radius: number;
+  duration?: number;
+  effects: SkillEffect[];
+}
+interface DamageOverTimeEffect extends EffectBase {
+  type: 'damage_over_time';
+  value: number;
+  element?: string;
+  duration: number;
+  interval: number;
+}
+interface CleanseEffect extends EffectBase {
+  type: 'cleanse';
+  effectType: 'negative' | 'positive' | 'all';
+  count: number;
+}
+
+type SkillEffect =
+  | DamageEffect
+  | StatusEffect
+  | HealEffect
+  | BuffDebuffEffect
+  | AoEEffect
+  | DamageOverTimeEffect
+  | CleanseEffect;
 
 @Injectable()
 export class BattleService {
@@ -19,7 +83,8 @@ export class BattleService {
   constructor(
     private prisma: PrismaService,
     private eventEmitter: EventEmitter2,
-    private characterStatsService: CharacterStatsService, // Serviço injetado
+    private characterStatsService: CharacterStatsService,
+    private skillService: SkillService,
   ) {}
 
   // --- LÓGICA DE DANO MELHORADA ---
@@ -84,8 +149,21 @@ export class BattleService {
       return null;
     }
 
+    const log: string[] = [];
+
     try {
-      // CALCULA STATS TOTAIS DO JOGADOR
+      // Obter Eco atualizado do DB (necessário aqui também)
+      const charCurrentStats = await this.prisma.character.findUnique({
+        where: { id: playerId },
+        select: { hp: true, eco: true, maxEco: true }, // Pegar HP e Eco atuais
+      });
+      if (!charCurrentStats)
+        throw new NotFoundException(
+          'Personagem desapareceu durante o combate?',
+        );
+
+      combat.playerHp = charCurrentStats.hp; // Sincroniza HP antes do turno do monstro
+
       const playerTotalStats =
         await this.characterStatsService.calculateTotalStats(playerId);
       const playerLevel =
@@ -97,16 +175,13 @@ export class BattleService {
         )?.level ?? 1;
 
       const monsterStats = combat.monsterTemplate.stats as any;
-      // Stats totais do monstro = stats base (não tem equipamento)
       const monsterTotalStats = {
         totalConstitution: monsterStats.constitution ?? 5,
         defense: monsterStats.defense ?? 0,
         attack: monsterStats.attack ?? 0,
       };
 
-      const log: string[] = [];
-
-      // 1. Dano do Jogador -> Monstro (Usa stats totais)
+      // 1. Dano do Jogador -> Monstro
       const playerDamage = this.calculateDamage(
         playerTotalStats,
         monsterTotalStats,
@@ -119,7 +194,7 @@ export class BattleService {
         `Você ataca ${combat.monsterTemplate.name} e causa ${playerDamage} de dano.`,
       );
 
-      // 2. Monstro Morre? -> FIM DO COMBATE (SEM RETORNO DE PAYLOAD)
+      // 2. Monstro Morre?
       if (combat.monsterHp <= 0) {
         console.log(
           `[BattleService] Monstro derrotado! Chamando handleCombatWin para ${playerId}`,
@@ -131,12 +206,12 @@ export class BattleService {
         return null;
       }
 
-      // 3. Dano do Monstro -> Jogador (Usa stats totais)
+      // 3. Dano do Monstro -> Jogador
       const monsterDamage = this.calculateDamage(
         monsterStats,
         playerTotalStats,
         false,
-        1, // Nível do monstro é 1
+        1,
       );
       combat.playerHp = Math.max(0, combat.playerHp - monsterDamage);
       log.push(
@@ -149,7 +224,7 @@ export class BattleService {
         data: { hp: combat.playerHp },
       });
 
-      // 4. Jogador Morre? -> FIM DO COMBATE (SEM RETORNO DE PAYLOAD)
+      // 4. Jogador Morre?
       if (combat.playerHp <= 0) {
         log.push(`Você foi derrotado por ${combat.monsterTemplate.name}...`);
         this.endCombat(playerId, 'loss', log);
@@ -157,18 +232,244 @@ export class BattleService {
       }
 
       // 5. Se NINGUÉM morreu, retorna o estado atualizado
-      return this.getCombatUpdatePayload(combat, log);
+      combat.lastAction = Date.now();
+      // Passa o eco e maxEco atuais para getCombatUpdatePayload
+      return this.getCombatUpdatePayload(
+        combat,
+        log,
+        charCurrentStats.eco,
+        charCurrentStats.maxEco,
+      );
     } catch (error) {
       console.error(
         `[BattleService] Erro ao processar ataque para ${playerId}:`,
         error,
       );
-      // Notifica o jogador sobre o erro interno
       this.eventEmitter.emit('combat.error', {
         playerId: playerId,
         message: 'Erro interno ao processar ataque.',
       });
       return null;
+    }
+  }
+
+  // --- NOVA FUNÇÃO PARA PROCESSAR SKILL ---
+  async processPlayerSkill(
+    playerId: string,
+    skillId: string,
+  ): Promise<CombatUpdatePayload | null> {
+    console.log(
+      `[BattleService] processPlayerSkill chamado para ${playerId} usando skill ${skillId}`,
+    );
+
+    const combat = this.activeCombats.get(playerId);
+    if (!combat) {
+      console.log(
+        `[BattleService] Nenhum combate ativo para ${playerId} ao usar skill`,
+      );
+      throw new HttpException(
+        'Você não está em combate.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const log: string[] = [];
+
+    try {
+      // --- VALIDAÇÕES ---
+      const [characterData, learnedSkillEntry, skillData] = await Promise.all([
+        this.prisma.character.findUnique({
+          where: { id: playerId },
+          select: { eco: true, level: true, maxEco: true },
+        }),
+        this.prisma.characterSkill.findUnique({
+          where: {
+            characterId_skillId: { characterId: playerId, skillId: skillId },
+          },
+        }),
+        this.prisma.skill.findUnique({
+          where: { id: skillId },
+        }),
+      ]);
+
+      if (!characterData)
+        throw new NotFoundException('Personagem não encontrado.');
+      if (!skillData)
+        throw new NotFoundException(`Skill ${skillId} não encontrada.`);
+      if (!learnedSkillEntry)
+        throw new ConflictException('Você não conhece esta skill.');
+
+      if (characterData.eco < skillData.ecoCost) {
+        throw new ConflictException(
+          `Eco insuficiente para usar ${skillData.name} (Custo: ${skillData.ecoCost}, Atual: ${characterData.eco}).`,
+        );
+      }
+
+      // --- CALCULAR STATS ---
+      const playerTotalStats =
+        await this.characterStatsService.calculateTotalStats(playerId);
+      const playerLevel = characterData.level ?? 1;
+      const monsterStats = combat.monsterTemplate.stats as any;
+      const monsterTotalStats = {
+        totalConstitution: monsterStats.constitution ?? 5,
+        defense: monsterStats.defense ?? 0,
+        attack: monsterStats.attack ?? 0,
+      };
+
+      // --- DEDUZIR ECO ---
+      const newEco = characterData.eco - skillData.ecoCost;
+      await this.prisma.character.update({
+        where: { id: playerId },
+        data: { eco: newEco },
+      });
+      log.push(`Você usa ${skillData.name} (Eco: -${skillData.ecoCost}).`);
+
+      // --- APLICAR EFEITOS DA SKILL ---
+      const effectsInput = skillData.effectData;
+      const effects: SkillEffect[] = Array.isArray(effectsInput)
+        ? (effectsInput as unknown as SkillEffect[])
+        : [effectsInput as unknown as SkillEffect];
+
+      for (const effect of effects) {
+        if (
+          typeof effect !== 'object' ||
+          effect === null ||
+          !('type' in effect)
+        ) {
+          log.push(`Ignorando efeito inválido: ${JSON.stringify(effect)}`);
+          continue;
+        }
+
+        // Verificar chance, se houver
+        if (effect.chance !== undefined && Math.random() > effect.chance) {
+          log.push(`O efeito ${effect.type} falhou (chance).`);
+          continue;
+        }
+
+        // Now TypeScript should allow accessing effect.type
+        switch (effect.type) {
+          case 'damage': {
+            const damageEffect = effect;
+            const damageValue =
+              damageEffect.value + (playerTotalStats.totalIntelligence ?? 0);
+            const finalDamage = Math.max(
+              1,
+              damageValue - (monsterTotalStats.defense ?? 0),
+            );
+            combat.monsterHp = Math.max(0, combat.monsterHp - finalDamage);
+            log.push(
+              `A skill causa ${finalDamage} de dano ${damageEffect.element ?? ''} a ${combat.monsterName}.`,
+            );
+            break;
+          }
+          case 'heal': {
+            const healEffect = effect;
+            combat.playerHp = Math.min(
+              combat.playerMaxHp,
+              combat.playerHp + healEffect.value,
+            );
+            log.push(`Você se cura em ${healEffect.value} HP.`);
+            break;
+          }
+          case 'status': {
+            const statusEffect = effect;
+            log.push(
+              `${combat.monsterName} é afetado por ${statusEffect.effect} por ${statusEffect.duration} turnos.`,
+            );
+            break;
+          }
+          case 'buff':
+          case 'debuff': {
+            const buffDebuffEffect = effect;
+            log.push(
+              `Você ${buffDebuffEffect.type === 'buff' ? 'recebe' : 'aplica'} ${buffDebuffEffect.stat} (${buffDebuffEffect.value > 0 ? '+' : ''}${buffDebuffEffect.value * 100}%) por ${buffDebuffEffect.duration} turnos.`,
+            );
+            break;
+          }
+          case 'aoe': {
+            const aoeEffect = effect;
+            log.push(
+              `Efeito 'aoe' ainda não implementado (Raio: ${aoeEffect.radius}).`,
+            );
+            break;
+          }
+          case 'damage_over_time': {
+            const dotEffect = effect;
+            log.push(
+              `Efeito 'damage_over_time' ainda não implementado (Valor: ${dotEffect.value}, Duração: ${dotEffect.duration}).`,
+            );
+            break;
+          }
+          case 'cleanse': {
+            const cleanseEffect = effect;
+            log.push(
+              `Efeito 'cleanse' ainda não implementado (Tipo: ${cleanseEffect.effectType}, Contagem: ${cleanseEffect.count}).`,
+            );
+            break;
+          }
+          default:
+            log.push(`Efeito desconhecido: ${(effect as EffectBase).type}`);
+        }
+
+        // Verificar se o monstro morreu após este efeito específico
+        if (combat.monsterHp <= 0) break;
+      }
+
+      // --- VERIFICAR FIM DO COMBATE (MONSTRO MORREU) ---
+      if (combat.monsterHp <= 0) {
+        console.log(
+          `[BattleService] Monstro derrotado por skill! Chamando handleCombatWin para ${playerId}`,
+        );
+        log.push(`Você derrotou ${combat.monsterTemplate.name}!`);
+        await this.handleCombatWin(playerId, combat, log);
+        this.endCombat(playerId, 'win', log);
+        return null;
+      }
+
+      // --- TURNO DO MONSTRO (CONTRA-ATAQUE) ---
+      const monsterDamage = this.calculateDamage(
+        monsterStats,
+        playerTotalStats,
+        false,
+        1,
+      );
+      combat.playerHp = Math.max(0, combat.playerHp - monsterDamage);
+      log.push(
+        `${combat.monsterTemplate.name} contra-ataca e causa ${monsterDamage} de dano.`,
+      );
+
+      // Atualizar HP do jogador no DB após contra-ataque
+      await this.prisma.character.update({
+        where: { id: playerId },
+        data: { hp: combat.playerHp },
+      });
+
+      // --- VERIFICAR FIM DO COMBATE (JOGADOR MORREU) ---
+      if (combat.playerHp <= 0) {
+        log.push(`Você foi derrotado por ${combat.monsterTemplate.name}...`);
+        this.endCombat(playerId, 'loss', log);
+        return null;
+      }
+
+      // --- ATUALIZAR TIMESTAMP E RETORNAR ESTADO ---
+      combat.lastAction = Date.now();
+      // Passa o newEco calculado e maxEco para getCombatUpdatePayload
+      return this.getCombatUpdatePayload(
+        combat,
+        log,
+        newEco,
+        characterData.maxEco,
+      );
+    } catch (error) {
+      console.error(
+        `[BattleService] Erro ao processar skill ${skillId} para ${playerId}:`,
+        error,
+      );
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        'Erro interno ao usar skill.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
@@ -426,19 +727,24 @@ export class BattleService {
     return this.activeCombats.get(playerId);
   }
 
+  // Modificar para aceitar eco e maxEco
   private getCombatUpdatePayload(
     combat: CombatInstance,
     log: string[],
+    currentEco: number, // <-- NOVO PARÂMETRO
+    maxEco: number, // <-- NOVO PARÂMETRO
   ): CombatUpdatePayload {
     return {
       isActive: combat.playerHp > 0 && combat.monsterHp > 0,
       monsterName: combat.monsterTemplate.name,
       playerHp: combat.playerHp,
       playerMaxHp: combat.playerMaxHp,
+      playerEco: currentEco, // <-- USAR PARÂMETRO
+      playerMaxEco: maxEco, // <-- USAR PARÂMETRO
       monsterHp: combat.monsterHp,
       monsterMaxHp: combat.monsterMaxHp,
       log: log,
-      isPlayerTurn: true,
+      isPlayerTurn: true, // Sempre será turno do jogador após a ação dele + contra-ataque
     };
   }
 }

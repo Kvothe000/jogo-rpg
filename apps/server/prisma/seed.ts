@@ -16,6 +16,18 @@ const KW_FOGO = 'kw_fogo';
 const KW_AGUA = 'kw_agua';
 const KW_LUZ = 'kw_luz';
 // --- FIM DOS IDs ---
+// --- NOVOS IDs PARA SKILLS ---
+const SKILL_LAMINA_INCANDESCENTE = 'sk_lamina_incandescente';
+const SKILL_CORTE_DISSIMULADO = 'sk_corte_dissimulado';
+const SKILL_GOLPE_PURIFICADOR = 'sk_golpe_purificador';
+const SKILL_LAMINA_FLUIDA = 'sk_lamina_fluida';
+const SKILL_FOGO_FATUO = 'sk_fogo_fatuo';
+const SKILL_EXPLOSAO_SOLAR = 'sk_explosao_solar';
+const SKILL_NEVOA_ESCALDANTE = 'sk_nevoa_escaldante';
+const SKILL_PRISMA_ILUSORIO = 'sk_prisma_ilusorio';
+const SKILL_POCA_SOMBRIA = 'sk_poca_sombria';
+const SKILL_BENCAO_RESTAURADORA = 'sk_bencao_restauradora';
+// --- FIM DOS IDs ---
 
 async function main() {
   console.log('Iniciando o script de seed v2...');
@@ -222,9 +234,242 @@ async function main() {
     },
   });
   console.log('Keywords iniciais criadas.');
-  console.log('Seed v7 concluído.');
-}
+  // --- 7. NOVO: Criar Skills Iniciais e suas Combinações ---
 
+  // 7.1 Lâmina + Fogo -> Lâmina Incandescente
+  await prisma.skill.upsert({
+    where: { id: SKILL_LAMINA_INCANDESCENTE },
+    update: {},
+    create: {
+      id: SKILL_LAMINA_INCANDESCENTE,
+      name: 'Lâmina Incandescente',
+      description: 'Um golpe que imbui a lâmina com fogo, queimando o alvo.',
+      ecoCost: 15,
+      effectData: [
+        { type: 'damage', value: 10, element: 'physical' },
+        { type: 'damage', value: 8, element: 'fire' },
+        { type: 'status', effect: 'burning', duration: 3, chance: 0.8 },
+      ],
+      requiredKeywords: {
+        connect: [{ id: KW_LAMINA }, { id: KW_FOGO }],
+      },
+    },
+  });
+
+  // 7.2 Lâmina + Sombra -> Corte Dissimulado
+  await prisma.skill.upsert({
+    where: { id: SKILL_CORTE_DISSIMULADO },
+    update: {},
+    create: {
+      id: SKILL_CORTE_DISSIMULADO,
+      name: 'Corte Dissimulado',
+      description: 'Um ataque rápido das sombras com alta chance de crítico.',
+      ecoCost: 12,
+      effectData: [
+        {
+          type: 'damage',
+          value: 12,
+          element: 'physical',
+          bonusCriticalChance: 0.3,
+        },
+      ],
+      requiredKeywords: {
+        connect: [{ id: KW_LAMINA }, { id: KW_SOMBRA }],
+      },
+    },
+  });
+
+  // 7.3 Lâmina + Luz -> Golpe Purificador
+  await prisma.skill.upsert({
+    where: { id: SKILL_GOLPE_PURIFICADOR },
+    update: {},
+    create: {
+      id: SKILL_GOLPE_PURIFICADOR,
+      name: 'Golpe Purificador',
+      description: 'Um ataque radiante que causa dano extra a seres sombrios.',
+      ecoCost: 18,
+      effectData: [
+        { type: 'damage', value: 15, element: 'physical' },
+        {
+          type: 'damage',
+          value: 10,
+          element: 'light',
+          bonusVsType: ['undead', 'shadow'],
+        },
+      ],
+      requiredKeywords: {
+        connect: [{ id: KW_LAMINA }, { id: KW_LUZ }],
+      },
+    },
+  });
+
+  // 7.4 Lâmina + Água -> Lâmina Fluida
+  await prisma.skill.upsert({
+    where: { id: SKILL_LAMINA_FLUIDA },
+    update: {},
+    create: {
+      id: SKILL_LAMINA_FLUIDA,
+      name: 'Lâmina Fluida',
+      description:
+        'Um golpe que flui como água, ignorando parte da defesa e podendo desacelerar.',
+      ecoCost: 14,
+      effectData: [
+        {
+          type: 'damage',
+          value: 10,
+          element: 'physical',
+          defensePenetration: 0.2,
+        },
+        { type: 'status', effect: 'slow', duration: 2, chance: 0.5 },
+      ],
+      requiredKeywords: {
+        connect: [{ id: KW_LAMINA }, { id: KW_AGUA }],
+      },
+    },
+  });
+
+  // 7.5 Fogo + Sombra -> Fogo Fátuo
+  await prisma.skill.upsert({
+    where: { id: SKILL_FOGO_FATUO },
+    update: {},
+    create: {
+      id: SKILL_FOGO_FATUO,
+      name: 'Fogo Fátuo',
+      description:
+        'Dispara um projétil de fogo sombrio que pode confundir o alvo.',
+      ecoCost: 20,
+      effectData: [
+        { type: 'damage', value: 25, element: 'shadowflame' },
+        { type: 'status', effect: 'confused', duration: 2, chance: 0.4 },
+      ],
+      requiredKeywords: {
+        connect: [{ id: KW_FOGO }, { id: KW_SOMBRA }],
+      },
+    },
+  });
+
+  // 7.6 Fogo + Luz -> Explosão Solar
+  await prisma.skill.upsert({
+    where: { id: SKILL_EXPLOSAO_SOLAR },
+    update: {},
+    create: {
+      id: SKILL_EXPLOSAO_SOLAR,
+      name: 'Explosão Solar',
+      description:
+        'Uma explosão de luz e fogo que causa dano em área e pode cegar.',
+      ecoCost: 30,
+      effectData: {
+        type: 'aoe',
+        radius: 2,
+        effects: [
+          { type: 'damage', value: 20, element: 'fire_light' },
+          { type: 'status', effect: 'blind', duration: 1, chance: 0.6 },
+        ],
+      },
+      requiredKeywords: {
+        connect: [{ id: KW_FOGO }, { id: KW_LUZ }],
+      },
+    },
+  });
+
+  // 7.7 Fogo + Água -> Névoa Escaldante
+  await prisma.skill.upsert({
+    where: { id: SKILL_NEVOA_ESCALDANTE },
+    update: {},
+    create: {
+      id: SKILL_NEVOA_ESCALDANTE,
+      name: 'Névoa Escaldante',
+      description: 'Cria uma área de vapor que queima e dificulta a visão.',
+      ecoCost: 25,
+      effectData: {
+        type: 'aoe',
+        radius: 3,
+        duration: 4,
+        effects: [
+          { type: 'damage_over_time', value: 5, element: 'fire', interval: 1 },
+          { type: 'debuff', stat: 'accuracy', value: -0.2, chance: 1.0 },
+        ],
+      },
+      requiredKeywords: {
+        connect: [{ id: KW_FOGO }, { id: KW_AGUA }],
+      },
+    },
+  });
+
+  // 7.8 Sombra + Luz -> Prisma Ilusório
+  await prisma.skill.upsert({
+    where: { id: SKILL_PRISMA_ILUSORIO },
+    update: {},
+    create: {
+      id: SKILL_PRISMA_ILUSORIO,
+      name: 'Prisma Ilusório',
+      description:
+        'Dobra a luz e a sombra para criar ilusões e aumentar a evasão.',
+      ecoCost: 22,
+      effectData: [
+        { type: 'buff', stat: 'evasion', value: 0.3, duration: 5 }, // Aumenta Evasão
+        { type: 'summon', summonId: 'illusion_clone', count: 2, duration: 5 }, // Cria 2 clones ilusórios (precisaremos definir 'illusion_clone')
+      ],
+      requiredKeywords: {
+        connect: [{ id: KW_SOMBRA }, { id: KW_LUZ }],
+      },
+    },
+  });
+
+  // 7.9 Sombra + Água -> Poça Sombria
+  await prisma.skill.upsert({
+    where: { id: SKILL_POCA_SOMBRIA },
+    update: {},
+    create: {
+      id: SKILL_POCA_SOMBRIA,
+      name: 'Poça Sombria',
+      description:
+        'Cria uma área escura e pegajosa que causa dano e prende inimigos.',
+      ecoCost: 28,
+      effectData: {
+        type: 'aoe',
+        radius: 2.5,
+        duration: 6,
+        effects: [
+          {
+            type: 'damage_over_time',
+            value: 4,
+            element: 'shadow',
+            interval: 1,
+          },
+          { type: 'status', effect: 'rooted', duration: 1, chance: 0.7 }, // Chance de enraizar a cada segundo
+        ],
+      },
+      requiredKeywords: {
+        connect: [{ id: KW_SOMBRA }, { id: KW_AGUA }],
+      },
+    },
+  });
+
+  // 7.10 Luz + Água -> Bênção Restauradora
+  await prisma.skill.upsert({
+    where: { id: SKILL_BENCAO_RESTAURADORA },
+    update: {},
+    create: {
+      id: SKILL_BENCAO_RESTAURADORA,
+      name: 'Bênção Restauradora',
+      description:
+        'Canaliza a luz através da água para curar ferimentos e remover aflições.',
+      ecoCost: 20,
+      effectData: [
+        { type: 'heal', value: 40 }, // Cura 40 HP
+        { type: 'cleanse', effectType: 'negative', count: 1 }, // Remove 1 status negativo
+      ],
+      requiredKeywords: {
+        connect: [{ id: KW_LUZ }, { id: KW_AGUA }],
+      },
+    },
+  });
+
+  console.log('Skills iniciais baseadas em combinações de Keywords criadas.'); // Log de confirmação
+
+  console.log('Seed v8 concluído.'); // ATUALIZAR VERSÃO FINAL
+}
 main()
   .catch((e) => {
     console.error(e);

@@ -19,9 +19,15 @@ import { BattleService } from 'src/battle/battle.service';
 import { OnEvent } from '@nestjs/event-emitter';
 import { LootDropPayload } from 'src/game/types/socket-with-auth.type';
 import { InventoryService } from 'src/inventory/inventory.service';
-import { HttpException } from '@nestjs/common';
+import {
+  HttpException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { CharacterStatsService } from 'src/character-stats/character-stats.service';
-import { EcoService } from 'src/eco/eco.service'; // 1. IMPORTE O EcoService
+import { EcoService } from 'src/eco/eco.service';
+import { SkillService } from 'src/skill/skill.service';
+import { Skill } from '@prisma/client';
 
 @WebSocketGateway({
   cors: {
@@ -41,7 +47,8 @@ export class GameGateway
     private battleService: BattleService,
     private inventoryService: InventoryService,
     private characterStatsService: CharacterStatsService,
-    private ecoService: EcoService, // 2. INJETE O EcoService
+    private ecoService: EcoService,
+    private skillService: SkillService,
   ) {
     const secret = process.env.JWT_SECRET;
     if (!secret) {
@@ -309,19 +316,85 @@ export class GameGateway
     }
 
     console.log(`[GameGateway] combatAttack recebido de player ${playerId}`);
+    try {
+      const combatUpdate =
+        await this.battleService.processPlayerAttack(playerId);
 
-    const combatUpdate = await this.battleService.processPlayerAttack(playerId);
+      if (combatUpdate) {
+        console.log(
+          `[GameGateway] Enviando combatUpdate (attack) para player ${playerId}`,
+        );
+        client.emit('combatUpdate', combatUpdate);
+      } else {
+        // Se retornou null, o combate provavelmente terminou no BattleService
+        // O evento combatEnd já terá sido emitido pelo BattleService via EventEmitter
+        console.log(
+          `[GameGateway] Nenhum combatUpdate (attack) para player ${playerId} (combate terminou?)`,
+        );
+      }
+    } catch (error) {
+      console.error(
+        `[GameGateway] Erro ao processar combatAttack para ${playerId}:`,
+        error,
+      );
+      const message =
+        error instanceof HttpException
+          ? error.message
+          : 'Erro ao processar ataque.';
+      client.emit('serverMessage', `Falha no ataque: ${message}`);
+    }
+  }
 
-    if (combatUpdate) {
-      console.log(
-        `[GameGateway] Enviando combatUpdate para player ${playerId}`,
+  // --- NOVO HANDLER PARA USAR SKILL ---
+  @SubscribeMessage('combatUseSkill')
+  async handleCombatUseSkill(
+    @ConnectedSocket() client: SocketWithAuth,
+    @MessageBody() payload: { skillId: string },
+  ) {
+    const playerId = client.data.user?.character?.id;
+    const skillIdToUse = payload?.skillId;
+
+    if (!playerId || !skillIdToUse) {
+      client.emit('serverMessage', 'Erro: Dados inválidos para usar skill.');
+      return;
+    }
+
+    console.log(
+      `[GameGateway] combatUseSkill recebido: player=${playerId}, skill=${skillIdToUse}`,
+    );
+    try {
+      // Chama o método do BattleService que implementamos
+      const combatUpdate = await this.battleService.processPlayerSkill(
+        playerId,
+        skillIdToUse,
       );
-      client.emit('combatUpdate', combatUpdate);
-    } else {
-      console.log(
-        `[GameGateway] Nenhum combatUpdate para player ${playerId} (combate terminou)`,
+
+      if (combatUpdate) {
+        console.log(
+          `[GameGateway] Enviando combatUpdate (skill) para player ${playerId}`,
+        );
+        client.emit('combatUpdate', combatUpdate);
+        // Atualizar Eco no frontend (poderíamos enviar um evento 'playerStatsUpdated' ou incluir Eco no 'combatUpdate')
+        // Por simplicidade agora, o frontend pode deduzir baseado no custo da skill usada com sucesso
+      } else {
+        // Se retornou null, o combate terminou no BattleService
+        // O evento combatEnd já foi emitido pelo BattleService via EventEmitter
+        console.log(
+          `[GameGateway] Nenhum combatUpdate (skill) para player ${playerId} (combate terminou?)`,
+        );
+        // Poderíamos buscar o Eco atualizado e enviar aqui se necessário
+      }
+    } catch (error) {
+      // Captura erros lançados pelo BattleService (Eco insuficiente, não conhece skill, etc.)
+      console.error(
+        `[GameGateway] Erro ao processar combatUseSkill para ${playerId} (skill ${skillIdToUse}):`,
+        error,
       );
-      client.emit('serverMessage', 'Você não está em combate.');
+      const message =
+        error instanceof HttpException
+          ? error.message
+          : 'Erro desconhecido ao usar skill.';
+      client.emit('serverMessage', `Falha ao usar skill: ${message}`);
     }
   }
 
@@ -344,7 +417,6 @@ export class GameGateway
     );
   }
 
-  // --- NOVO: OUVINTE PARA PEDIDO DE KEYWORDS ---
   @SubscribeMessage('requestKeywords')
   async handleRequestKeywords(@ConnectedSocket() client: SocketWithAuth) {
     const characterId = client.data.user?.character?.id;
@@ -359,10 +431,7 @@ export class GameGateway
     console.log(`[GameGateway] Recebido requestKeywords de ${characterId}`);
 
     try {
-      // Chama o serviço para buscar as keywords
       const keywords = await this.ecoService.getCharacterKeywords(characterId);
-
-      // Envia a lista de volta para o cliente
       client.emit('updateKeywords', { keywords: keywords });
       console.log(
         `[GameGateway] Emitido updateKeywords para ${characterId} com ${keywords.length} keywords.`,
@@ -373,6 +442,112 @@ export class GameGateway
         error,
       );
       client.emit('serverMessage', 'Erro ao buscar suas Keywords.');
+    }
+  }
+
+  // --- NOVOS HANDLERS PARA SKILLS ---
+
+  @SubscribeMessage('requestAvailableSkills')
+  async handleRequestAvailableSkills(
+    @ConnectedSocket() client: SocketWithAuth,
+  ) {
+    const characterId = client.data.user?.character?.id;
+    if (!characterId) {
+      client.emit('serverMessage', 'Erro: Personagem não encontrado.');
+      return;
+    }
+
+    console.log(
+      `[GameGateway] Recebido requestAvailableSkills de ${characterId}`,
+    );
+    try {
+      const availableSkills =
+        await this.skillService.getAvailableSkillsForCharacter(characterId);
+      client.emit('updateAvailableSkills', { skills: availableSkills });
+      console.log(
+        `[GameGateway] Emitido updateAvailableSkills para ${characterId} com ${availableSkills.length} skills.`,
+      );
+    } catch (error) {
+      console.error(
+        `[GameGateway] Erro ao buscar skills disponíveis para ${characterId}:`,
+        error,
+      );
+      client.emit('serverMessage', 'Erro ao buscar skills disponíveis.');
+    }
+  }
+
+  @SubscribeMessage('requestLearnedSkills')
+  async handleRequestLearnedSkills(@ConnectedSocket() client: SocketWithAuth) {
+    const characterId = client.data.user?.character?.id;
+    if (!characterId) {
+      client.emit('serverMessage', 'Erro: Personagem não encontrado.');
+      return;
+    }
+
+    console.log(
+      `[GameGateway] Recebido requestLearnedSkills de ${characterId}`,
+    );
+    try {
+      const learnedSkills =
+        await this.skillService.getLearnedSkills(characterId);
+      client.emit('updateLearnedSkills', { skills: learnedSkills });
+      console.log(
+        `[GameGateway] Emitido updateLearnedSkills para ${characterId} com ${learnedSkills.length} skills.`,
+      );
+    } catch (error) {
+      console.error(
+        `[GameGateway] Erro ao buscar skills aprendidas para ${characterId}:`,
+        error,
+      );
+      client.emit('serverMessage', 'Erro ao buscar skills aprendidas.');
+    }
+  }
+
+  @SubscribeMessage('learnSkill')
+  async handleLearnSkill(
+    @ConnectedSocket() client: SocketWithAuth,
+    @MessageBody() payload: { skillId: string },
+  ) {
+    const characterId = client.data.user?.character?.id;
+    const skillIdToLearn = payload?.skillId;
+
+    if (!characterId || !skillIdToLearn) {
+      client.emit(
+        'serverMessage',
+        'Erro: Dados inválidos para aprender skill.',
+      );
+      return;
+    }
+
+    console.log(
+      `[GameGateway] Recebido learnSkill: char=${characterId}, skill=${skillIdToLearn}`,
+    );
+    try {
+      await this.skillService.learnSkill(characterId, skillIdToLearn);
+      client.emit('serverMessage', 'Nova skill aprendida!');
+
+      // Opcional: Reenviar listas atualizadas após aprender
+      const [availableSkills, learnedSkills] = await Promise.all([
+        this.skillService.getAvailableSkillsForCharacter(characterId),
+        this.skillService.getLearnedSkills(characterId),
+      ]);
+      client.emit('updateAvailableSkills', { skills: availableSkills });
+      client.emit('updateLearnedSkills', { skills: learnedSkills });
+    } catch (error) {
+      console.error(
+        `[GameGateway] Erro ao aprender skill ${skillIdToLearn} para ${characterId}:`,
+        error,
+      );
+      let message = 'Erro desconhecido ao tentar aprender a skill.';
+      if (
+        error instanceof NotFoundException ||
+        error instanceof ConflictException
+      ) {
+        message = error.message;
+      } else if (error instanceof HttpException) {
+        message = error.message;
+      }
+      client.emit('serverMessage', `Falha ao aprender skill: ${message}`);
     }
   }
 
@@ -477,17 +652,14 @@ export class GameGateway
     );
 
     try {
-      // Calcula os novos stats totais
       const totalStats =
         await this.characterStatsService.calculateTotalStats(characterId);
 
-      // Encontra o socket do jogador
       const clientSocket = this.getClientSocket(characterId);
       if (clientSocket) {
         console.log(
           `[GameGateway] Emitindo playerStatsUpdated para ${characterId} (${clientSocket.id})`,
         );
-        // Emite o evento para o frontend com os stats calculados
         clientSocket.emit('playerStatsUpdated', totalStats);
       } else {
         console.warn(
@@ -499,7 +671,6 @@ export class GameGateway
         `[GameGateway] Erro ao processar equipment.changed para ${characterId}:`,
         error,
       );
-      // Opcional: Enviar uma serverMessage de erro para o cliente, se o socket ainda existir
       this.getClientSocket(characterId)?.emit(
         'serverMessage',
         'Erro ao atualizar stats após equipar/desequipar.',

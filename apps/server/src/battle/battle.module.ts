@@ -1,14 +1,18 @@
-import { forwardRef, Module } from '@nestjs/common'; // 1. RE-IMPORTE forwardRef
+// apps/server/src/battle/battle.module.ts
+
+import { forwardRef, Module } from '@nestjs/common';
 import { BattleService } from './battle.service';
 import { PrismaModule } from 'src/prisma/prisma.module';
 import { GameModule } from 'src/game/game.module';
 import { CharacterStatsModule } from 'src/character-stats/character-stats.module';
+import { SkillModule } from 'src/skill/skill.module'; // 1. IMPORTE SkillModule
 
 @Module({
   imports: [
     PrismaModule,
-    forwardRef(() => GameModule),
-    CharacterStatsModule, // 2. USE forwardRef AQUI
+    forwardRef(() => GameModule), // GameModule usa BattleService
+    CharacterStatsModule,
+    SkillModule, // 2. ADICIONE SkillModule AQUI
   ],
   providers: [BattleService],
   exports: [BattleService],

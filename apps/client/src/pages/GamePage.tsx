@@ -4,12 +4,16 @@ import { useSocket } from '../contexts/SocketContext';
 import { GameChat } from '../components/GameChat';
 import { InventoryDisplay } from '../components/InventoryDisplay';
 import { KeywordsDisplay } from '../components/KeywordsDisplay';
+import { AvailableSkillsDisplay } from '../components/AvailableSkillsDisplay';
+import { LearnedSkillsDisplay } from '../components/LearnedSkillsDisplay';
 import type {
     CombatUpdatePayload,
     LootDropPayload,
     InventorySlotData,
     CharacterTotalStats,
-    KeywordData
+    KeywordData,
+    AvailableSkillData,
+    LearnedSkillData
 } from '../../../server/src/game/types/socket-with-auth.type';
 
 // Tipos necessários (definidos localmente)
@@ -34,19 +38,19 @@ export function GamePage() {
     const [combatData, setCombatData] = useState<CombatUpdatePayload | null>(null);
     const [inventorySlots, setInventorySlots] = useState<InventorySlotData[]>([]);
     const [showInventory, setShowInventory] = useState(false);
-    // NOVOS ESTADOS PARA KEYWORDS
     const [keywords, setKeywords] = useState<KeywordData[]>([]);
     const [showKeywords, setShowKeywords] = useState(false);
+    const [availableSkills, setAvailableSkills] = useState<AvailableSkillData[]>([]);
+    const [learnedSkills, setLearnedSkills] = useState<LearnedSkillData[]>([]);
+    const [showSkillsManager, setShowSkillsManager] = useState(false);
 
     // Refs
     const userRef = useRef(user);
     const updateProfileRef = useRef(updateProfile);
-    const combatDataRef = useRef(combatData);
 
     // Atualiza Refs
     useEffect(() => { userRef.current = user; }, [user]);
     useEffect(() => { updateProfileRef.current = updateProfile; }, [updateProfile]);
-    useEffect(() => { combatDataRef.current = combatData; }, [combatData]);
 
     // --- EFEITOS E LISTENERS ---
     useEffect(() => {
@@ -71,12 +75,16 @@ export function GamePage() {
             const currentUser = userRef.current;
             const currentHp = currentUser?.character?.hp ?? 100;
             const maxHp = currentUser?.character?.maxHp ?? 100;
+            const currentEco = currentUser?.character?.eco ?? 50;
+            const maxEco = currentUser?.character?.maxEco ?? 50;
             
             setCombatData({
                 isActive: true,
                 monsterName: payload.monsterName,
                 playerHp: currentHp,
                 playerMaxHp: maxHp,
+                playerEco: currentEco,
+                playerMaxEco: maxEco,
                 monsterHp: payload.monsterHp,
                 monsterMaxHp: payload.monsterHp,
                 log: [payload.message],
@@ -86,7 +94,20 @@ export function GamePage() {
         };
 
         const handleCombatUpdate = (payload: CombatUpdatePayload) => {
+            console.log("Combat Update Recebido:", payload);
             setCombatData(payload);
+
+            // --- ATUALIZAR AuthContext ---
+            // Atualiza o perfil com os novos valores de HP e Eco recebidos do backend
+            updateProfileRef.current({
+                character: {
+                    hp: payload.playerHp,
+                    maxHp: payload.playerMaxHp,
+                    eco: payload.playerEco,
+                    maxEco: payload.playerMaxEco,
+                } as any,
+            });
+            console.log("[GamePage DEBUG] AuthContext atualizado com HP/Eco do combatUpdate.");
         };
 
         const handleCombatEnd = (result: 'win' | 'loss' | 'flee') => {
@@ -146,9 +167,6 @@ export function GamePage() {
                     newMaxEco += 20;
                     newHp = newMaxHp; // Cura total
                     newEco = newMaxEco; // Restaura Eco total
-                } else if (combatDataRef.current) {
-                    // Se não houve level up, pega o HP do último estado de combate
-                    newHp = combatDataRef.current.playerHp;
                 }
 
                 console.log('🔄 Atualizando perfil com:', {
@@ -210,11 +228,21 @@ export function GamePage() {
             console.log("[GamePage DEBUG] updateProfile chamado com novos stats.");
         };
 
-        // --- NOVO HANDLER PARA KEYWORDS ---
         const handleUpdateKeywords = (payload: { keywords: KeywordData[] }) => {
             console.log("[GamePage DEBUG] Keywords recebidas:", payload.keywords);
             setKeywords(payload.keywords);
-            setShowKeywords(true); // Mostra automaticamente ao receber
+            setShowKeywords(true);
+        };
+
+        // --- NOVOS HANDLERS PARA SKILLS ---
+        const handleUpdateAvailableSkills = (payload: { skills: AvailableSkillData[] }) => {
+            console.log("[GamePage DEBUG] Skills Disponíveis recebidas:", payload.skills);
+            setAvailableSkills(payload.skills);
+        };
+
+        const handleUpdateLearnedSkills = (payload: { skills: LearnedSkillData[] }) => {
+            console.log("[GamePage DEBUG] Skills Aprendidas recebidas:", payload.skills);
+            setLearnedSkills(payload.skills);
         };
 
         // Liga os ouvintes
@@ -228,7 +256,12 @@ export function GamePage() {
         socket.on('lootReceived', handleLootReceived);
         socket.on('updateInventory', handleUpdateInventory);
         socket.on('playerStatsUpdated', handlePlayerStatsUpdated);
-        socket.on('updateKeywords', handleUpdateKeywords); // NOVO OUVINTE
+        socket.on('updateKeywords', handleUpdateKeywords);
+        socket.on('updateAvailableSkills', handleUpdateAvailableSkills);
+        socket.on('updateLearnedSkills', handleUpdateLearnedSkills);
+
+        // Pedir skills aprendidas ao conectar
+        handleRequestLearnedSkills();
 
         // Função de limpeza
         return () => {
@@ -243,9 +276,11 @@ export function GamePage() {
             socket.off('lootReceived', handleLootReceived);
             socket.off('updateInventory', handleUpdateInventory);
             socket.off('playerStatsUpdated', handlePlayerStatsUpdated);
-            socket.off('updateKeywords', handleUpdateKeywords); // LIMPA O NOVO OUVINTE
+            socket.off('updateKeywords', handleUpdateKeywords);
+            socket.off('updateAvailableSkills', handleUpdateAvailableSkills);
+            socket.off('updateLearnedSkills', handleUpdateLearnedSkills);
         };
-    }, [socket]); // Dependência apenas do socket
+    }, [socket]);
 
     // --- FUNÇÕES DE AÇÃO ---
     const handleMove = useCallback((direction: string) => {
@@ -279,7 +314,6 @@ export function GamePage() {
         }
     }, [socket]);
 
-    // NOVA FUNÇÃO para pedir as Keywords
     const handleRequestKeywords = useCallback(() => {
         if (socket) {
             console.log("Pedindo keywords...");
@@ -287,9 +321,63 @@ export function GamePage() {
         }
     }, [socket]);
 
+    // --- NOVAS FUNÇÕES PARA SKILLS ---
+    const handleRequestAvailableSkills = useCallback(() => {
+        if (socket) {
+            console.log("Pedindo skills disponíveis...");
+            socket.emit('requestAvailableSkills');
+        }
+    }, [socket]);
+
+    const handleRequestLearnedSkills = useCallback(() => {
+        if (socket) {
+            console.log("Pedindo skills aprendidas...");
+            socket.emit('requestLearnedSkills');
+        }
+    }, [socket]);
+
+    const handleLearnSkill = useCallback((skillId: string) => {
+        if (socket) {
+            console.log(`Tentando aprender skill ${skillId}...`);
+            socket.emit('learnSkill', { skillId: skillId });
+        }
+    }, [socket]);
+
+    // --- NOVA FUNÇÃO PARA USAR SKILL ---
+    const handleUseSkill = useCallback((skillId: string) => {
+        const currentCombatData = combatData;
+        const currentUser = userRef.current;
+
+        if (socket && currentCombatData?.isPlayerTurn) {
+            // Busca a skill na lista de aprendidas para pegar o custo
+            const skill = learnedSkills.find(s => s.id === skillId);
+            if (!skill) {
+                console.error(`Tentativa de usar skill desconhecida: ${skillId}`);
+                alert('Erro: Skill não encontrada.');
+                return;
+            }
+            
+            // Verificação de Eco no frontend (feedback rápido)
+            const currentEco = currentUser?.character?.eco ?? 0;
+            if (currentEco < skill.ecoCost) {
+                alert(`Eco insuficiente para usar ${skill.name} (Custo: ${skill.ecoCost}, Atual: ${currentEco})`);
+                return;
+            }
+
+            console.log(`Usando skill ${skillId}...`);
+            socket.emit('combatUseSkill', { skillId: skillId });
+        } else if (!currentCombatData?.isPlayerTurn) {
+            alert('Aguarde o seu turno!');
+        }
+    }, [socket, combatData, learnedSkills]);
+
     if (!room) {
         return <div>Carregando informações da sala...</div>;
     }
+
+    // Pegar eco atual para exibição - agora sincronizado automaticamente via handleCombatUpdate
+    const currentEco = user?.character?.eco ?? 0;
+    const maxEco = user?.character?.maxEco ?? 50;
 
     // RENDERIZAÇÃO DA PÁGINA
     return (
@@ -307,6 +395,7 @@ export function GamePage() {
                         <div style={{ margin: '20px 0' }}>
                             <p>HP Monstro: **{combatData.monsterHp} / {combatData.monsterMaxHp}**</p>
                             <p style={{ fontWeight: 'bold' }}>Seu HP: {combatData.playerHp} / {combatData.playerMaxHp}</p>
+                            <p style={{ fontWeight: 'bold', color: '#00B4D8' }}>Seu Eco: {currentEco} / {maxEco}</p>
                         </div>
 
                         <div style={{ 
@@ -322,21 +411,50 @@ export function GamePage() {
                         </div>
 
                         <p style={{ marginTop: '10px' }}>
-                            Turno: **{combatData.isPlayerTurn ? 'SEU ATAQUE' : 'Monstro'}**
+                            Turno: **{combatData.isPlayerTurn ? 'SEU TURNO' : 'Monstro'}**
                         </p>
-                        <button 
-                            onClick={handleAttack} 
-                            disabled={!combatData.isPlayerTurn}
-                            style={{ 
-                                padding: '10px 20px', 
-                                background: 'darkgreen', 
-                                color: 'white', 
-                                border: 'none', 
-                                cursor: combatData.isPlayerTurn ? 'pointer' : 'not-allowed' 
-                            }}
-                        >
-                            Ataque Básico (Força)
-                        </button>
+
+                        {/* --- BOTÕES DE AÇÃO DE COMBATE --- */}
+                        <div style={{ marginTop: '15px', display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                            {/* Botão Ataque Básico */}
+                            <button 
+                                onClick={handleAttack} 
+                                disabled={!combatData.isPlayerTurn}
+                                style={{ 
+                                    padding: '10px 20px', 
+                                    background: 'darkred', 
+                                    color: 'white', 
+                                    border: 'none', 
+                                    cursor: combatData.isPlayerTurn ? 'pointer' : 'not-allowed' 
+                                }}
+                            >
+                                Ataque Básico (Força)
+                            </button>
+
+                            {/* --- BOTÕES DE SKILL --- */}
+                            {learnedSkills.map((skill) => {
+                                const hasEnoughEco = currentEco >= skill.ecoCost;
+                                const canUse = combatData.isPlayerTurn && hasEnoughEco;
+                                return (
+                                    <button
+                                        key={skill.id}
+                                        onClick={() => handleUseSkill(skill.id)}
+                                        disabled={!canUse}
+                                        title={`${skill.name} - Custo: ${skill.ecoCost} Eco\n${skill.description}`}
+                                        style={{
+                                            padding: '10px 15px',
+                                            background: '#0077B6',
+                                            color: 'white',
+                                            border: 'none',
+                                            cursor: canUse ? 'pointer' : 'not-allowed',
+                                            opacity: canUse ? 1 : 0.6,
+                                        }}
+                                    >
+                                        {skill.name} ({skill.ecoCost})
+                                    </button>
+                                );
+                            })}
+                        </div>
                     </div>
                 ) : (
                     // --- MODO EXPLORAÇÃO ---
@@ -419,7 +537,7 @@ export function GamePage() {
                 
                 {/* EXIBIR STATS QUE MUDAM COM EQUIPAMENTO */}
                 <p>HP: {user?.character?.hp} / {user?.character?.maxHp}</p>
-                <p>Eco: {user?.character?.eco} / {user?.character?.maxEco}</p>
+                <p>Eco: {currentEco} / {maxEco}</p>
                 <p>Força: {user?.character?.strength}</p>
                 <p>Destreza: {user?.character?.dexterity}</p>
                 <p>Inteligência: {user?.character?.intelligence}</p>
@@ -434,7 +552,7 @@ export function GamePage() {
                 
                 {/* BOTÕES DE AÇÃO DA SIDEBAR */}
                 <div style={{ marginTop: '10px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                    {/* Botão Inventário (EXISTENTE) */}
+                    {/* Botão Inventário */}
                     <button 
                         onClick={handleRequestInventory} 
                         style={{ 
@@ -461,7 +579,7 @@ export function GamePage() {
                         </button>
                     )}
 
-                    {/* NOVO BOTÃO PARA KEYWORDS */}
+                    {/* Botão Keywords/Eco */}
                     <button 
                         onClick={handleRequestKeywords} 
                         style={{ 
@@ -488,6 +606,38 @@ export function GamePage() {
                             Fechar Eco
                         </button>
                     )}
+
+                    {/* Botão para Skills */}
+                    <button
+                        onClick={() => {
+                            handleRequestAvailableSkills();
+                            handleRequestLearnedSkills();
+                            setShowSkillsManager(true);
+                        }}
+                        style={{
+                            background: '#48CAE4',
+                            color: 'black',
+                            border: 'none',
+                            padding: '8px 10px',
+                            cursor: 'pointer'
+                        }}
+                    >
+                        📚 Skills
+                    </button>
+                    {showSkillsManager && (
+                        <button
+                            onClick={() => setShowSkillsManager(false)}
+                            style={{
+                                background: 'grey',
+                                color: 'white',
+                                border: 'none',
+                                padding: '8px 10px',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            Fechar Skills
+                        </button>
+                    )}
                 </div>
 
                 {/* RENDERIZAÇÃO CONDICIONAL DO INVENTÁRIO */}
@@ -501,6 +651,19 @@ export function GamePage() {
                 {showKeywords && (
                     <div style={{ marginTop: '15px' }}>
                         <KeywordsDisplay keywords={keywords} />
+                    </div>
+                )}
+
+                {/* RENDERIZAÇÃO CONDICIONAL PARA SKILLS */}
+                {showSkillsManager && (
+                    <div style={{ marginTop: '15px', border: '1px solid #48CAE4', padding: '10px' }}>
+                        <h4>Gerenciador de Skills</h4>
+                        <AvailableSkillsDisplay
+                            skills={availableSkills}
+                            onLearnSkill={handleLearnSkill}
+                        />
+                        <hr style={{ margin: '15px 0' }}/>
+                        <LearnedSkillsDisplay skills={learnedSkills} />
                     </div>
                 )}
 

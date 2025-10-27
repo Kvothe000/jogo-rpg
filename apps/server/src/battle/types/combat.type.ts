@@ -23,6 +23,8 @@ export interface CombatUpdatePayload {
   monsterName: string;
   playerHp: number;
   playerMaxHp: number;
+  playerEco: number;
+  playerMaxEco: number;
   monsterHp: number;
   monsterMaxHp: number;
   log: string[];

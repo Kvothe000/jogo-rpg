@@ -1,7 +1,9 @@
 import { Socket } from 'socket.io';
 import type { UserPayload } from 'src/auth/types/user-payload.type';
 import { CombatUpdatePayload } from 'src/battle/types/combat.type';
-import { ItemType, EquipSlot } from '@prisma/client';
+import { ItemType, EquipSlot, PowerKeyword, Skill } from '@prisma/client';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { AvailableSkill } from 'src/skill/skill.service';
 
 // 1. Usamos 'Record<string, never>' para sermos explícitos
 interface ClientToServerEvents {
@@ -15,6 +17,10 @@ interface ClientToServerEvents {
   equipItem: (payload: { slotId: string }) => void;
   unequipItem: (payload: { slotId: string }) => void;
   requestKeywords: () => void;
+  requestAvailableSkills: () => void; // Pedir skills que podem ser aprendidas
+  requestLearnedSkills: () => void; // Pedir skills já aprendidas
+  learnSkill: (payload: { skillId: string }) => void; // Tentar aprender uma skill
+  combatUseSkill: (payload: { skillId: string }) => void; // <-- NOVO EVENTO
 }
 // 2. Usamos 'Record<string, never>'
 interface ServerToClientEvents {
@@ -45,6 +51,8 @@ interface ServerToClientEvents {
   updateInventory: (payload: { slots: InventorySlotData[] }) => void;
   playerStatsUpdated: (payload: CharacterTotalStats) => void;
   updateKeywords: (payload: { keywords: KeywordData[] }) => void;
+  updateAvailableSkills: (payload: { skills: AvailableSkillData[] }) => void; // Enviar skills disponíveis
+  updateLearnedSkills: (payload: { skills: LearnedSkillData[] }) => void; // Enviar skills aprendidas
 }
 
 // 3. Usamos 'Record<string, never>'
@@ -86,6 +94,18 @@ interface KeywordData {
   id: string;
   name: string;
   description: string;
+}
+// Dados enviados para "AvailableSkill" (simplificado para o frontend)
+export interface AvailableSkillData
+  extends Omit<Skill, 'requiredKeywords' | 'characters'> {
+  requiredKeywordsData: Pick<PowerKeyword, 'id' | 'name'>[];
+}
+
+// Dados enviados para "LearnedSkill" (pode incluir nível da skill no futuro)
+export interface LearnedSkillData
+  extends Omit<Skill, 'requiredKeywords' | 'characters'> {
+  // level?: number; // Poderíamos adicionar o nível da skill aqui vindo de CharacterSkill
+  requiredKeywordsData: Pick<PowerKeyword, 'id' | 'name'>[]; // Manter os requisitos visíveis
 }
 // 5. O tipo final está correto
 export type SocketWithAuth = Socket<
