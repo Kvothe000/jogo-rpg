@@ -6,6 +6,8 @@ import { InventoryDisplay } from '../components/InventoryDisplay';
 import { KeywordsDisplay } from '../components/KeywordsDisplay';
 import { AvailableSkillsDisplay } from '../components/AvailableSkillsDisplay';
 import { LearnedSkillsDisplay } from '../components/LearnedSkillsDisplay';
+import { EffectsDisplay } from '../components/EffectsDisplay';
+import toast from 'react-hot-toast';
 import type {
     CombatUpdatePayload,
     LootDropPayload,
@@ -72,11 +74,14 @@ export function GamePage() {
         };
 
         const handleNpcDialogue = (payload: { npcName: string; dialogue: string }) => {
-            alert(`${payload.npcName} diz:\n${payload.dialogue}`);
+            toast(`${payload.npcName}:\n${payload.dialogue}`, { 
+                duration: 6000,
+                icon: '💬'
+            });
         };
 
         const handleServerMessage = (message: string) => {
-            alert(`[SISTEMA]: ${message}`);
+            toast(message, { icon: 'ℹ️' });
         };
 
         const handleCombatStarted = (payload: CombatStartedPayload) => {
@@ -97,8 +102,10 @@ export function GamePage() {
                 monsterMaxHp: payload.monsterHp,
                 log: [payload.message],
                 isPlayerTurn: true,
+                monsterEffects: [],
+                playerEffects: []
             });
-            alert(payload.message);
+            toast.error(`Batalha iniciada contra ${payload.monsterName}!`, { icon: '⚔️' });
         };
 
         const handleCombatUpdate = (payload: CombatUpdatePayload) => {
@@ -114,7 +121,13 @@ export function GamePage() {
         };
 
         const handleCombatEnd = (result: 'win' | 'loss' | 'flee') => {
-            alert(`Batalha Encerrada: ${result === 'win' ? 'VITÓRIA!' : result === 'loss' ? 'DERROTA!' : 'FUGIU!'}`);
+            if (result === 'win') {
+                toast.success('VITÓRIA!', { icon: '🏆' });
+            } else if (result === 'loss') {
+                toast.error('Derrota...', { icon: '💀' });
+            } else {
+                toast('Fugiu da batalha.', { icon: '💨' });
+            }
             setCombatData(null);
         };
 
@@ -136,8 +149,9 @@ export function GamePage() {
                 }
 
                 const levelMsg = payload.newLevel ? ` e subiu para o Nível ${payload.newLevel}!` : '.';
-                const alertMsg = `🎉 RECOMPENSA! Ganhou ${xpGained.toString()} XP e ${payload.goldGained} Ouro${levelMsg}`;
-                alert(alertMsg);
+                const alertMsg = `🎉 Ganhou ${xpGained.toString()} XP e ${payload.goldGained} Ouro${levelMsg}`;
+                
+                toast.success(alertMsg, { duration: 5000 });
 
                 const newGoldTotal = (currentUser?.character?.gold ?? 0) + payload.goldGained;
 
@@ -173,7 +187,10 @@ export function GamePage() {
         const handleLootReceived = (payload: { drops: LootDropPayload[] }) => {
             if (payload.drops.length > 0) {
                 const lootMessage = payload.drops.map(d => `${d.quantity}x ${d.itemName}`).join(', ');
-                alert(`💰 LOOT! Você obteve: ${lootMessage}`);
+                toast(`💰 Loot: ${lootMessage}`, { 
+                    icon: '🪙', 
+                    duration: 5000 
+                });
             }
         };
 
@@ -306,19 +323,19 @@ export function GamePage() {
         if (socket && currentCombatData?.isPlayerTurn) {
             const skill = learnedSkills.find(s => s.id === skillId);
             if (!skill) {
-                alert('Erro: Skill não encontrada.');
+                toast.error('Erro: Skill não encontrada.');
                 return;
             }
             
             const currentEco = currentUser?.character?.eco ?? 0;
             if (currentEco < skill.ecoCost) {
-                alert(`Eco insuficiente para usar ${skill.name} (Custo: ${skill.ecoCost}, Atual: ${currentEco})`);
+                toast.error(`Eco insuficiente para usar ${skill.name} (Custo: ${skill.ecoCost}, Atual: ${currentEco})`);
                 return;
             }
 
             socket.emit('combatUseSkill', { skillId: skillId });
         } else if (!currentCombatData?.isPlayerTurn) {
-            alert('Aguarde o seu turno!');
+            toast.error('Aguarde o seu turno!');
         }
     }, [socket, combatData, learnedSkills]);
 
@@ -365,7 +382,7 @@ export function GamePage() {
                 boxShadow: uiTheme === 'renegade' ? '0 0 20px var(--color-renegade-magenta)' : '0 0 20px var(--color-citadel-glow)',
                 transition: 'all 0.3s ease',
                 overflow: 'auto',
-                minWidth: '0', // Permite que o flex shrink funcione
+                minWidth: '0',
             }}>
 
                 {combatData?.isActive ? (
@@ -388,20 +405,12 @@ export function GamePage() {
                                     fontWeight: 'bold'
                                 }}> {combatData.monsterHp}</span> / {combatData.monsterMaxHp}
                             </p>
-                            <p style={{ fontWeight: 'bold' }}>
-                                Seu HP: 
-                                <span style={{
-                                    color: 'var(--color-hp)',
-                                    textShadow: '0 0 5px var(--color-hp)'
-                                }}> {combatData.playerHp}</span> / {combatData.playerMaxHp}
-                            </p>
-                            <p style={{ 
-                                fontWeight: 'bold', 
-                                color: 'var(--color-eco)',
-                                textShadow: '0 0 5px var(--color-renegade-cyan)'
-                            }}>
-                                Seu Eco: {currentEco} / {maxEco}
-                            </p>
+                            
+                            {/* Efeitos do Monstro */}
+                            <EffectsDisplay 
+                                effects={combatData.monsterEffects} 
+                                targetName={combatData.monsterName} 
+                            />
                         </div>
 
                         {/* Barras de Status */}
@@ -453,6 +462,34 @@ export function GamePage() {
                                     />
                                 </div>
                             </div>
+                        </div>
+
+                        {/* Efeitos do Jogador */}
+                        <div style={{ 
+                            margin: '15px 0', 
+                            borderTop: '1px dashed var(--color-border)', 
+                            paddingTop: '15px' 
+                        }}>
+                            <p style={{ fontWeight: 'bold' }}>
+                                Seu HP: 
+                                <span style={{
+                                    color: 'var(--color-hp)',
+                                    textShadow: '0 0 5px var(--color-hp)'
+                                }}> {combatData.playerHp}</span> / {combatData.playerMaxHp}
+                            </p>
+                            <p style={{ 
+                                fontWeight: 'bold', 
+                                color: 'var(--color-eco)',
+                                textShadow: '0 0 5px var(--color-renegade-cyan)'
+                            }}>
+                                Seu Eco: {currentEco} / {maxEco}
+                            </p>
+                            
+                            {/* Efeitos do Jogador */}
+                            <EffectsDisplay 
+                                effects={combatData.playerEffects} 
+                                targetName="Você" 
+                            />
                         </div>
 
                         <div style={{

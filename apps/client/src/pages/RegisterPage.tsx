@@ -2,54 +2,60 @@ import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
 import { MatrixBackground } from '../components/MatrixBackground';
+import toast from 'react-hot-toast';
 
 export function RegisterPage() {
   const [email, setEmail] = useState('');
   const [pass, setPass] = useState('');
   const [charName, setCharName] = useState('');
-  const [error, setError] = useState<string | null>(null);
 
   const auth = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
 
+    // Validações no frontend
     if (pass.length < 6) {
-      setError('A senha deve ter no mínimo 6 caracteres.');
+      toast.error('A senha deve ter no mínimo 6 caracteres.');
       return;
     }
     if (charName.length < 3) {
-      setError('O nome do personagem deve ter no mínimo 3 caracteres.');
+      toast.error('O nome do personagem deve ter no mínimo 3 caracteres.');
       return;
     }
 
-    try {
-      await auth.register(email, pass, charName);
-      navigate('/game');
-    } catch (err: any) {
-      console.error('Falha no registro', err);
-      const message = err.response?.data?.message || 'Erro ao criar conta. Tente outro email ou nome.';
-      setError(message);
-    }
+    // Usar toast.promise para feedback
+    await toast.promise(
+      auth.register(email, pass, charName),
+      {
+        loading: 'A criar identidade...',
+        success: () => {
+          navigate('/game');
+          return 'Conta criada com sucesso! A entrar...';
+        },
+        error: (err: any) => {
+          console.error('Falha no registro', err);
+          return err.response?.data?.message || 'Erro ao criar conta. Tente outro email ou nome.';
+        },
+      }
+    );
   };
 
   return (
     <div style={{
-      position: 'relative', // Para conter o background
-      width: '100%',      // Ocupa a largura disponível
-      minHeight: '100vh', // Garante altura mínima da viewport
-      display: 'flex',      // Usar flexbox
-      justifyContent: 'center', // Centralizar card horizontalmente
-      alignItems: 'center',  // Tentar centralizar card verticalmente
-      padding: '50px 20px',  // Padding para dar espaço (vertical/horizontal)
+      position: 'relative',
+      width: '100%',
+      minHeight: '100vh',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: '50px 20px',
       boxSizing: 'border-box',
     }}>
-      <MatrixBackground /> {/* Deve ficar visível e fixo */}
+      <MatrixBackground />
 
       <div style={{
-        // ... (Estilos básicos do card: border, padding interno, backgroundColor, etc.)
         border: '2px solid var(--color-citadel-accent)',
         padding: '40px 30px',
         backgroundColor: 'var(--color-citadel-primary)',
@@ -57,10 +63,10 @@ export function RegisterPage() {
         borderRadius: '8px',
         boxShadow: '0 0 30px var(--color-citadel-glow)',
         width: '100%',
-        maxWidth: '400px', // Ou 450px para Register
+        maxWidth: '450px',
         textAlign: 'center',
-        position: 'relative', // Manter para zIndex
-        zIndex: 1,           // Manter
+        position: 'relative',
+        zIndex: 1,
       }}>
         {/* Efeito de Glitch no título */}
         <div style={{ 
@@ -109,21 +115,6 @@ export function RegisterPage() {
           }}>
             CRIAR CONTA
           </h2>
-
-          {error && (
-            <div style={{
-              padding: '12px',
-              backgroundColor: 'rgba(220, 53, 69, 0.2)',
-              border: '1px solid #dc3545',
-              borderRadius: '4px',
-              color: '#dc3545',
-              marginBottom: '20px',
-              fontSize: '0.85em',
-              textAlign: 'center'
-            }}>
-              ⚠️ {error}
-            </div>
-          )}
           
           <div style={{ marginBottom: '20px', textAlign: 'left' }}>
             <label style={{

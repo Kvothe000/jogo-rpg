@@ -53,6 +53,12 @@ interface ServerToClientEvents {
   updateKeywords: (payload: { keywords: KeywordData[] }) => void;
   updateAvailableSkills: (payload: { skills: AvailableSkillData[] }) => void; // Enviar skills disponíveis
   updateLearnedSkills: (payload: { skills: LearnedSkillData[] }) => void; // Enviar skills aprendidas
+  playerVitalsUpdated: (payload: {
+    hp: number;
+    maxHp: number;
+    eco: number;
+    maxEco: number;
+  }) => void;
 }
 
 // 3. Usamos 'Record<string, never>'

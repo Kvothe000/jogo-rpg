@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-misused-promises */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import {
   OnGatewayConnection,
@@ -28,6 +29,12 @@ import { CharacterStatsService } from 'src/character-stats/character-stats.servi
 import { EcoService } from 'src/eco/eco.service';
 import { SkillService } from 'src/skill/skill.service';
 import { Skill } from '@prisma/client';
+import { OnModuleDestroy } from '@nestjs/common';
+
+// --- Constantes para Regeneração ---
+const REGEN_INTERVAL_MS = 10000; // Verificar a cada 10 segundos
+const HP_REGEN_PER_INTERVAL = 5; // Regenerar 5 HP por intervalo
+const ECO_REGEN_PER_INTERVAL = 3; // Regenerar 3 Eco por intervalo
 
 @WebSocketGateway({
   cors: {
@@ -35,11 +42,16 @@ import { Skill } from '@prisma/client';
   },
 })
 export class GameGateway
-  implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit
+  implements
+    OnGatewayConnection,
+    OnGatewayDisconnect,
+    OnGatewayInit,
+    OnModuleDestroy
 {
   @WebSocketServer()
   server: Server;
   private jwtSecret: string;
+  private regenInterval: NodeJS.Timeout | null = null;
 
   constructor(
     private jwtService: JwtService,
@@ -59,6 +71,108 @@ export class GameGateway
 
   afterInit(_server: Server) {
     console.log('🎮 GameGateway Inicializado!');
+    this.startRegenerationLoop();
+  }
+
+  onModuleDestroy() {
+    if (this.regenInterval) {
+      clearInterval(this.regenInterval);
+      console.log('🛑 Loop de Regeneração Parado.');
+    }
+  }
+
+  // --- LÓGICA DO LOOP DE REGENERAÇÃO ---
+  private startRegenerationLoop(): void {
+    console.log(
+      `🔄 Iniciando loop de regeneração a cada ${REGEN_INTERVAL_MS / 1000} segundos.`,
+    );
+
+    this.regenInterval = setInterval(() => {
+      (async () => {
+        try {
+          const socketsInfo = await this.server.fetchSockets();
+          const sockets = socketsInfo
+            .map(
+              (socketInfo) =>
+                this.server.sockets.sockets.get(
+                  socketInfo.id,
+                ) as SocketWithAuth,
+            )
+            .filter(Boolean);
+
+          for (const client of sockets) {
+            if (!client?.data?.user) continue;
+
+            const character = client.data.user.character;
+            if (!character) continue;
+
+            const isInCombat = this.battleService.getCombat(character.id);
+            if (isInCombat) continue;
+
+            if (
+              character.hp >= character.maxHp &&
+              character.eco >= character.maxEco
+            ) {
+              continue;
+            }
+
+            const newHp = Math.min(
+              character.maxHp,
+              character.hp + HP_REGEN_PER_INTERVAL,
+            );
+            const newEco = Math.min(
+              character.maxEco,
+              character.eco + ECO_REGEN_PER_INTERVAL,
+            );
+
+            if (newHp !== character.hp || newEco !== character.eco) {
+              try {
+                const updatedCharacter = await this.prisma.character.update({
+                  where: { id: character.id },
+                  data: {
+                    hp: newHp,
+                    eco: newEco,
+                  },
+                  select: {
+                    id: true,
+                    hp: true,
+                    maxHp: true,
+                    eco: true,
+                    maxEco: true,
+                    name: true,
+                  },
+                });
+
+                client.data.user.character!.hp = updatedCharacter.hp;
+                client.data.user.character!.eco = updatedCharacter.eco;
+                client.data.user.character!.maxHp = updatedCharacter.maxHp;
+                client.data.user.character!.maxEco = updatedCharacter.maxEco;
+
+                client.emit('playerVitalsUpdated', {
+                  hp: updatedCharacter.hp,
+                  maxHp: updatedCharacter.maxHp,
+                  eco: updatedCharacter.eco,
+                  maxEco: updatedCharacter.maxEco,
+                });
+
+                console.log(
+                  `[Regen] ${updatedCharacter.name}: HP ${updatedCharacter.hp}/${updatedCharacter.maxHp}, Eco ${updatedCharacter.eco}/${updatedCharacter.maxEco}`,
+                );
+              } catch (updateError) {
+                console.error(
+                  `[Regen] Erro ao atualizar personagem ${character.id}:`,
+                  updateError,
+                );
+              }
+            }
+          }
+        } catch (fetchError) {
+          console.error('[Regen] Erro ao buscar sockets:', fetchError);
+        }
+      })().catch((loopError) => {
+        console.error('[Regen] Erro inesperado no loop:', loopError);
+      });
+    }, REGEN_INTERVAL_MS);
   }
 
   async handleConnection(client: SocketWithAuth) {
@@ -89,6 +203,14 @@ export class GameGateway
         `✅ Cliente Conectado: ${userPayload.email} (Character ID: ${userPayload.character?.id})`,
       );
       await this.sendRoomDataToClient(client);
+
+      // Reiniciar loop se estava parado e há clientes
+      if (!this.regenInterval) {
+        const socketsInfo = await this.server.fetchSockets();
+        if (socketsInfo.length > 0) {
+          this.startRegenerationLoop();
+        }
+      }
     } catch (error: unknown) {
       let errorMessage = 'Falha na conexão';
       if (error instanceof Error) {
@@ -108,6 +230,23 @@ export class GameGateway
     } else {
       console.log('🔌 Cliente (não autenticado) Desconectado');
     }
+
+    // A lógica async fica dentro do setTimeout
+    setTimeout(async () => {
+      try {
+        const socketsInfo = await this.server.fetchSockets();
+        if (socketsInfo.length === 0 && this.regenInterval) {
+          clearInterval(this.regenInterval);
+          this.regenInterval = null;
+          console.log('🛑 Loop de Regeneração Parado (sem clientes).');
+        }
+      } catch (error) {
+        console.error(
+          '[Regen] Erro ao verificar sockets em disconnect:',
+          error,
+        );
+      }
+    }, 100);
   }
 
   @SubscribeMessage('playerLook')
@@ -326,8 +465,6 @@ export class GameGateway
         );
         client.emit('combatUpdate', combatUpdate);
       } else {
-        // Se retornou null, o combate provavelmente terminou no BattleService
-        // O evento combatEnd já terá sido emitido pelo BattleService via EventEmitter
         console.log(
           `[GameGateway] Nenhum combatUpdate (attack) para player ${playerId} (combate terminou?)`,
         );
@@ -345,7 +482,6 @@ export class GameGateway
     }
   }
 
-  // --- NOVO HANDLER PARA USAR SKILL ---
   @SubscribeMessage('combatUseSkill')
   async handleCombatUseSkill(
     @ConnectedSocket() client: SocketWithAuth,
@@ -363,7 +499,6 @@ export class GameGateway
       `[GameGateway] combatUseSkill recebido: player=${playerId}, skill=${skillIdToUse}`,
     );
     try {
-      // Chama o método do BattleService que implementamos
       const combatUpdate = await this.battleService.processPlayerSkill(
         playerId,
         skillIdToUse,
@@ -374,18 +509,12 @@ export class GameGateway
           `[GameGateway] Enviando combatUpdate (skill) para player ${playerId}`,
         );
         client.emit('combatUpdate', combatUpdate);
-        // Atualizar Eco no frontend (poderíamos enviar um evento 'playerStatsUpdated' ou incluir Eco no 'combatUpdate')
-        // Por simplicidade agora, o frontend pode deduzir baseado no custo da skill usada com sucesso
       } else {
-        // Se retornou null, o combate terminou no BattleService
-        // O evento combatEnd já foi emitido pelo BattleService via EventEmitter
         console.log(
           `[GameGateway] Nenhum combatUpdate (skill) para player ${playerId} (combate terminou?)`,
         );
-        // Poderíamos buscar o Eco atualizado e enviar aqui se necessário
       }
     } catch (error) {
-      // Captura erros lançados pelo BattleService (Eco insuficiente, não conhece skill, etc.)
       console.error(
         `[GameGateway] Erro ao processar combatUseSkill para ${playerId} (skill ${skillIdToUse}):`,
         error,
@@ -444,8 +573,6 @@ export class GameGateway
       client.emit('serverMessage', 'Erro ao buscar suas Keywords.');
     }
   }
-
-  // --- NOVOS HANDLERS PARA SKILLS ---
 
   @SubscribeMessage('requestAvailableSkills')
   async handleRequestAvailableSkills(
@@ -526,7 +653,6 @@ export class GameGateway
       await this.skillService.learnSkill(characterId, skillIdToLearn);
       client.emit('serverMessage', 'Nova skill aprendida!');
 
-      // Opcional: Reenviar listas atualizadas após aprender
       const [availableSkills, learnedSkills] = await Promise.all([
         this.skillService.getAvailableSkillsForCharacter(characterId),
         this.skillService.getLearnedSkills(characterId),

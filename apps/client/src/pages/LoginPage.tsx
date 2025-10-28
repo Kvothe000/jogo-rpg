@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
 import { MatrixBackground } from '../components/MatrixBackground';
+import toast from 'react-hot-toast';
 
 export function LoginPage() {
   const [email, setEmail] = useState('');
@@ -11,30 +12,34 @@ export function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      await auth.login(email, pass);
-      navigate('/game');
-    } catch (err) {
-      console.error('Falha no login', err);
-      alert('Email ou senha inválidos!');
-    }
+    
+    await toast.promise(
+      auth.login(email, pass),
+      {
+        loading: 'A verificar credenciais...',
+        success: () => {
+          navigate('/game');
+          return 'Login bem-sucedido! A entrar...';
+        },
+        error: 'Email ou senha inválidos!',
+      }
+    );
   };
 
- return (
+  return (
     <div style={{
-      position: 'relative', // Para conter o background
-      width: '100%',      // Ocupa a largura disponível
-      minHeight: '100vh', // Garante altura mínima da viewport
-      display: 'flex',      // Usar flexbox
-      justifyContent: 'center', // Centralizar card horizontalmente
-      alignItems: 'center',  // Tentar centralizar card verticalmente
-      padding: '50px 20px',  // Padding para dar espaço (vertical/horizontal)
+      position: 'relative',
+      width: '100%',
+      minHeight: '100vh',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: '50px 20px',
       boxSizing: 'border-box',
     }}>
-      <MatrixBackground /> {/* Deve ficar visível e fixo */}
+      <MatrixBackground />
 
       <div style={{
-        // ... (Estilos básicos do card: border, padding interno, backgroundColor, etc.)
         border: '2px solid var(--color-citadel-accent)',
         padding: '40px 30px',
         backgroundColor: 'var(--color-citadel-primary)',
@@ -42,10 +47,10 @@ export function LoginPage() {
         borderRadius: '8px',
         boxShadow: '0 0 30px var(--color-citadel-glow)',
         width: '100%',
-        maxWidth: '400px', // Ou 450px para Register
+        maxWidth: '400px',
         textAlign: 'center',
-        position: 'relative', // Manter para zIndex
-        zIndex: 1,           // Manter
+        position: 'relative',
+        zIndex: 1,
       }}>
         {/* Efeito de Glitch no título */}
         <div style={{ 
