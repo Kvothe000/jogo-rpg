@@ -50,7 +50,8 @@ export class CharacterStatsService {
       totalIntelligence: character.intelligence,
       totalConstitution: character.constitution,
       totalMaxHp: character.maxHp, // Começa com o MaxHP base
-      totalMaxEco: character.maxEco, // Começa com o MaxEco base
+      totalMaxEco: character.maxEco,
+      types: [],
     };
 
     // 3. Iterar sobre os Itens Equipados e Somar os Bónus

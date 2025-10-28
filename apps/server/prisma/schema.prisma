@@ -88,7 +88,7 @@ model NPCTemplate {
   description String   @db.Text
   
   isHostile   Boolean  @default(false) // É um monstro?
-  
+  rank        String?
   // Stats, se for um monstro
   // Ex: { "hp": 50, "attack": 5, "defense": 2 }
   stats       Json     @default("{}")
@@ -96,7 +96,7 @@ model NPCTemplate {
   // Tabela de Loot
   // Ex: { "drops": [ {"itemId": "cuid_da_pocao", "chance": 0.5} ] }
   lootTable   Json     @default("{}")
-  
+  types       String[]      @default([]) // <-- ADICIONAR ESTA LINHA (Array de Strings)
   // --- Relacionamentos ---
   instances     NPCInstance[] // Onde este template aparece no mundo
   questStarts   Quest[]       @relation("StartNPC") // Quests que este NPC dá

@@ -3,7 +3,7 @@ import type { UserPayload } from 'src/auth/types/user-payload.type';
 import { CombatUpdatePayload } from 'src/battle/types/combat.type';
 import { ItemType, EquipSlot, PowerKeyword, Skill } from '@prisma/client';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { AvailableSkill } from 'src/skill/skill.service';
+import { types } from 'util';
 
 // 1. Usamos 'Record<string, never>' para sermos explícitos
 interface ClientToServerEvents {
@@ -88,6 +88,7 @@ export interface CharacterTotalStats {
   totalMaxHp: number; // MaxHP pode ser afectado por Constitution E itens
   totalMaxEco: number; // MaxEco pode ser afectado por Intelligence E itens
   // Adicionar outros stats derivados se necessário (ex: totalDefense, totalAttack)
+  types: string[];
 }
 // NOVO: Tipo para os dados de uma Keyword enviados ao cliente
 interface KeywordData {

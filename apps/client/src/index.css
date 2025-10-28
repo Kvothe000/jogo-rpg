@@ -1,11 +1,45 @@
+/* apps/client/src/index.css */
+
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  /* Fontes (Exemplo - Escolha ou instale fontes depois) */
+  --font-main: 'Share Tech Mono', monospace;
+  --font-display: 'Orbitron', sans-serif; /* Fonte mais "digital" para títulos/UI */
+
+  /* Paleta Base (Escura) */
+  --color-background: #0a0a0f; /* Um preto/azul muito escuro */
+  --color-text: #E0E1DD;       /* Prateado/branco-sujo para texto geral */
+  --color-border: #415A77;     /* Cinza-ardósia para bordas/divisórias */
+  --color-interactive-bg: #1a1a2e; /* Fundo para botões/inputs */
+
+  /* Paleta Cidadela (Ordem) */
+  --color-citadel-primary: #0D1B2A;  /* Azul-profundo */
+  --color-citadel-secondary: #415A77; /* Cinza-ardósia */
+  --color-citadel-accent: #6c757d;    /* Um cinza mais claro para detalhes */
+  --color-citadel-text: #E0E1DD;     /* Prateado */
+
+  /* Paleta Renegado (Caos/Eco) */
+  --color-renegade-magenta: #FF00FF;
+  --color-renegade-cyan: #00EEFF;
+  --color-renegade-purple: #7209B7;
+  --color-renegade-accent: #ff66ff; /* Magenta mais claro para hover/foco */
+
+  /* Cores de Feedback */
+  --color-hp: #dc3545;        /* Vermelho para HP */
+  --color-eco: var(--color-renegade-cyan); /* Ciano para Eco */
+  --color-xp: #ffc107;        /* Amarelo para XP */
+  --color-success: #28a745;    /* Verde para sucesso */
+  --color-warning: #ffc107;    /* Amarelo para aviso */
+  --color-danger: #dc3545;     /* Vermelho para erro/perigo */
+  --color-info: #17a2b8;       /* Azul info */
+
+  /* --- Restante das definições :root --- */
+  font-family: var(--font-main);
   line-height: 1.5;
   font-weight: 400;
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  color-scheme: dark; /* Forçar modo escuro */
+  color: var(--color-text);
+  background-color: var(--color-background);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -13,56 +47,61 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
+/* ... (resto do index.css: body, h1, button, etc.) */
 
+/* Ajustar estilos base para usar variáveis */
 body {
   margin: 0;
   display: flex;
   place-items: center;
   min-width: 320px;
   min-height: 100vh;
+  background-color: var(--color-background); /* Fundo geral */
+  color: var(--color-text); /* Cor de texto geral */
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display); /* Usar fonte display para títulos */
+  color: var(--color-renegade-cyan); /* Exemplo: Títulos em ciano */
 }
 
 button {
-  border-radius: 8px;
-  border: 1px solid transparent;
+  border-radius: 4px; /* Menos arredondado */
+  border: 1px solid var(--color-border);
   padding: 0.6em 1.2em;
   font-size: 1em;
   font-weight: 500;
   font-family: inherit;
-  background-color: #1a1a1a;
+  background-color: var(--color-interactive-bg); /* Fundo base interativo */
+  color: var(--color-text);
   cursor: pointer;
-  transition: border-color 0.25s;
+  transition: border-color 0.25s, background-color 0.25s;
 }
 button:hover {
-  border-color: #646cff;
+  border-color: var(--color-renegade-accent); /* Borda magenta clara no hover */
+  background-color: lighten(var(--color-interactive-bg), 5%); /* Levemente mais claro */
 }
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  border-color: var(--color-border);
+  background-color: var(--color-interactive-bg);
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+/* Ajustar links */
+a {
+  font-weight: 500;
+  color: var(--color-renegade-cyan); /* Links em ciano */
+  text-decoration: inherit;
 }
+a:hover {
+  color: var(--color-renegade-accent); /* Magenta claro no hover */
+}
+
+/* Remover centralização e padding excessivo se App.css fizer isso */
+/* #root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+} */

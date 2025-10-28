@@ -98,7 +98,6 @@ export function GamePage() {
             setCombatData(payload);
 
             // --- ATUALIZAR AuthContext ---
-            // Atualiza o perfil com os novos valores de HP e Eco recebidos do backend
             updateProfileRef.current({
                 character: {
                     hp: payload.playerHp,
@@ -381,37 +380,58 @@ export function GamePage() {
 
     // RENDERIZAÇÃO DA PÁGINA
     return (
-        <div style={{ display: 'flex', flexDirection: 'row', gap: '20px', padding: '20px', fontFamily: 'sans-serif' }}>
+        <div style={{
+            display: 'flex',
+            flexDirection: 'row',
+            gap: '20px',
+            padding: '20px',
+            fontFamily: 'var(--font-main)',
+            minHeight: 'calc(100vh - 40px)',
+        }}>
 
             {/* Coluna da Esquerda (Mundo e Ações) */}
-            <div style={{ width: '60%', border: '1px solid #ccc', padding: '15px' }}>
+            <div style={{
+                width: '60%',
+                border: '1px solid var(--color-border)',
+                padding: '15px',
+                backgroundColor: 'var(--color-citadel-primary)',
+                color: 'var(--color-citadel-text)',
+                borderRadius: '4px',
+            }}>
 
                 {/* RENDERIZAÇÃO CONDICIONAL */}
                 {combatData?.isActive ? (
                     // --- MODO COMBATE ---
                     <div style={{ textAlign: 'center' }}>
-                        <h2 style={{ color: 'red' }}>Lutando contra: {combatData.monsterName}</h2>
+                        <h2 style={{ color: 'var(--color-danger)' }}>
+                            Lutando contra: {combatData.monsterName}
+                        </h2>
 
                         <div style={{ margin: '20px 0' }}>
-                            <p>HP Monstro: **{combatData.monsterHp} / {combatData.monsterMaxHp}**</p>
-                            <p style={{ fontWeight: 'bold' }}>Seu HP: {combatData.playerHp} / {combatData.playerMaxHp}</p>
-                            <p style={{ fontWeight: 'bold', color: '#00B4D8' }}>Seu Eco: {currentEco} / {maxEco}</p>
+                            <p>HP Monstro: <span style={{color: 'var(--color-warning)'}}>{combatData.monsterHp}</span> / {combatData.monsterMaxHp}</p>
+                            <p style={{ fontWeight: 'bold' }}>Seu HP: <span style={{color: 'var(--color-hp)'}}>{combatData.playerHp}</span> / {combatData.playerMaxHp}</p>
+                            <p style={{ fontWeight: 'bold', color: 'var(--color-eco)' }}>Seu Eco: {currentEco} / {maxEco}</p>
                         </div>
 
-                        <div style={{ 
-                            height: '150px', 
-                            overflowY: 'scroll', 
-                            border: '1px solid #eee', 
-                            margin: '10px 0', 
-                            textAlign: 'left', 
-                            padding: '5px', 
-                            fontSize: '0.9em' 
+                        <div style={{
+                            height: '150px',
+                            overflowY: 'scroll',
+                            border: '1px solid var(--color-border)',
+                            margin: '10px 0',
+                            textAlign: 'left',
+                            padding: '8px',
+                            fontSize: '0.9em',
+                            backgroundColor: 'rgba(0,0,0,0.3)',
+                            fontFamily: 'var(--font-display)',
                         }}>
                             {combatData.log.map((line: string, i: number) => <div key={i}>{line}</div>)}
                         </div>
 
                         <p style={{ marginTop: '10px' }}>
-                            Turno: **{combatData.isPlayerTurn ? 'SEU TURNO' : 'Monstro'}**
+                            Turno: {combatData.isPlayerTurn ?
+                                <span style={{color: 'var(--color-renegade-cyan)'}}>SEU TURNO</span> :
+                                <span style={{color: 'var(--color-warning)'}}>Monstro</span>
+                            }
                         </p>
 
                         {/* --- BOTÕES DE AÇÃO DE COMBATE --- */}
@@ -422,10 +442,11 @@ export function GamePage() {
                                 disabled={!combatData.isPlayerTurn}
                                 style={{ 
                                     padding: '10px 20px', 
-                                    background: 'darkred', 
+                                    background: 'var(--color-danger)', 
                                     color: 'white', 
                                     border: 'none', 
-                                    cursor: combatData.isPlayerTurn ? 'pointer' : 'not-allowed' 
+                                    cursor: combatData.isPlayerTurn ? 'pointer' : 'not-allowed',
+                                    borderRadius: '4px',
                                 }}
                             >
                                 Ataque Básico (Força)
@@ -443,11 +464,12 @@ export function GamePage() {
                                         title={`${skill.name} - Custo: ${skill.ecoCost} Eco\n${skill.description}`}
                                         style={{
                                             padding: '10px 15px',
-                                            background: '#0077B6',
+                                            background: 'var(--color-renegade-purple)',
                                             color: 'white',
                                             border: 'none',
                                             cursor: canUse ? 'pointer' : 'not-allowed',
                                             opacity: canUse ? 1 : 0.6,
+                                            borderRadius: '4px',
                                         }}
                                     >
                                         {skill.name} ({skill.ecoCost})
@@ -459,7 +481,7 @@ export function GamePage() {
                 ) : (
                     // --- MODO EXPLORAÇÃO ---
                     <>
-                        <h2>{room.name}</h2>
+                        <h2 style={{ color: 'var(--color-citadel-text)' }}>{room.name}</h2>
                         <p>{room.description}</p>
 
                         {/* Seções de NPCs e Jogadores */}
@@ -469,7 +491,17 @@ export function GamePage() {
                                 <ul style={{ listStyle: 'none', padding: 0 }}>
                                     {room.npcs.map((npc: { id: string; name: string }) => (
                                         <li key={npc.id} style={{ marginBottom: '5px' }}>
-                                            <button onClick={() => handleInteractNpc(npc.id)}>
+                                            <button 
+                                                onClick={() => handleInteractNpc(npc.id)}
+                                                style={{
+                                                    padding: '8px 12px',
+                                                    background: 'var(--color-info)',
+                                                    color: 'white',
+                                                    border: 'none',
+                                                    borderRadius: '4px',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
                                                 {npc.name} (Conversar)
                                             </button>
                                         </li>
@@ -491,7 +523,7 @@ export function GamePage() {
                             </div>
                         )}
 
-                        <hr style={{ margin: '20px 0' }}/>
+                        <hr style={{ margin: '20px 0', borderColor: 'var(--color-border)' }}/>
 
                         {/* BOTÃO DE INICIAR COMBATE (FORA DO MODO COMBATE) */}
                         <h3>Ações de Teste</h3>
@@ -499,16 +531,17 @@ export function GamePage() {
                             onClick={handleStartCombat} 
                             style={{ 
                                 padding: '10px 15px', 
-                                background: 'red', 
-                                color: 'white', 
+                                background: 'var(--color-warning)', 
+                                color: 'black', 
                                 border: 'none', 
-                                cursor: 'pointer' 
+                                cursor: 'pointer',
+                                borderRadius: '4px',
                             }}
                         >
                             ⚔️ INICIAR COMBATE (TESTE)
                         </button>
 
-                        <hr style={{ margin: '20px 0' }}/>
+                        <hr style={{ margin: '20px 0', borderColor: 'var(--color-border)' }}/>
 
                         <h3>Saídas:</h3>
                         <div>
@@ -519,7 +552,12 @@ export function GamePage() {
                                     style={{ 
                                         marginRight: '10px', 
                                         textTransform: 'capitalize', 
-                                        padding: '8px 12px' 
+                                        padding: '8px 12px',
+                                        background: 'var(--color-citadel-secondary)',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer'
                                     }}
                                 >
                                     {direction}
@@ -531,13 +569,20 @@ export function GamePage() {
             </div>
 
             {/* Coluna da Direita (Info do Jogador, Chat e Inventário) */}
-            <div style={{ width: '40%', border: '1px solid #ccc', padding: '15px' }}>
-                <h3>{user?.character?.name} (Nível {user?.character?.level})</h3>
+            <div style={{
+                width: '40%',
+                border: '1px solid var(--color-border)',
+                padding: '15px',
+                backgroundColor: 'var(--color-citadel-primary)',
+                color: 'var(--color-citadel-text)',
+                borderRadius: '4px',
+            }}>
+                <h3 style={{ color: 'var(--color-renegade-cyan)' }}>{user?.character?.name} (Nível {user?.character?.level})</h3>
                 <p>Status: {user?.character?.status === 'AWAKENED' ? 'Despertado' : 'Bloqueado'}</p>
                 
                 {/* EXIBIR STATS QUE MUDAM COM EQUIPAMENTO */}
-                <p>HP: {user?.character?.hp} / {user?.character?.maxHp}</p>
-                <p>Eco: {currentEco} / {maxEco}</p>
+                <p>HP: <span style={{color: 'var(--color-hp)'}}>{user?.character?.hp}</span> / {user?.character?.maxHp}</p>
+                <p>Eco: <span style={{color: 'var(--color-eco)'}}>{currentEco}</span> / {maxEco}</p>
                 <p>Força: {user?.character?.strength}</p>
                 <p>Destreza: {user?.character?.dexterity}</p>
                 <p>Inteligência: {user?.character?.intelligence}</p>
@@ -546,8 +591,8 @@ export function GamePage() {
                 <p>Ouro: {user?.character?.gold}</p>
                 <p>XP: {user?.character?.xp?.toString() ?? '0'}</p>
                 <p>Estado da Ligação: {isConnected ? 
-                    <span style={{ color: 'green' }}> Ligado</span> : 
-                    <span style={{ color: 'red' }}> Desligado</span>}
+                    <span style={{ color: 'var(--color-success)' }}> Ligado</span> : 
+                    <span style={{ color: 'var(--color-danger)' }}> Desligado</span>}
                 </p>
                 
                 {/* BOTÕES DE AÇÃO DA SIDEBAR */}
@@ -556,10 +601,12 @@ export function GamePage() {
                     <button 
                         onClick={handleRequestInventory} 
                         style={{ 
-                            background: 'orange', 
+                            background: 'var(--color-info)', 
+                            color: 'white',
                             border: 'none', 
                             padding: '8px 10px', 
-                            cursor: 'pointer'
+                            cursor: 'pointer',
+                            borderRadius: '4px',
                         }}
                     >
                         🎒 Inventário
@@ -568,11 +615,12 @@ export function GamePage() {
                         <button 
                             onClick={() => setShowInventory(false)} 
                             style={{ 
-                                background: 'grey', 
+                                background: 'var(--color-citadel-secondary)', 
                                 color: 'white',
                                 border: 'none',
                                 padding: '8px 10px',
-                                cursor: 'pointer'
+                                cursor: 'pointer',
+                                borderRadius: '4px',
                             }}
                         >
                             Fechar Inv.
@@ -583,11 +631,12 @@ export function GamePage() {
                     <button 
                         onClick={handleRequestKeywords} 
                         style={{ 
-                            background: '#7209B7', 
+                            background: 'var(--color-renegade-purple)', 
                             color: 'white', 
                             border: 'none', 
                             padding: '8px 10px', 
-                            cursor: 'pointer' 
+                            cursor: 'pointer',
+                            borderRadius: '4px',
                         }}
                     >
                         ✨ Eco/Keywords
@@ -596,11 +645,12 @@ export function GamePage() {
                         <button 
                             onClick={() => setShowKeywords(false)} 
                             style={{ 
-                                background: 'grey', 
+                                background: 'var(--color-citadel-secondary)', 
                                 color: 'white',
                                 border: 'none',
                                 padding: '8px 10px',
-                                cursor: 'pointer'
+                                cursor: 'pointer',
+                                borderRadius: '4px',
                             }}
                         >
                             Fechar Eco
@@ -615,11 +665,12 @@ export function GamePage() {
                             setShowSkillsManager(true);
                         }}
                         style={{
-                            background: '#48CAE4',
-                            color: 'black',
+                            background: 'var(--color-info)',
+                            color: 'white',
                             border: 'none',
                             padding: '8px 10px',
-                            cursor: 'pointer'
+                            cursor: 'pointer',
+                            borderRadius: '4px',
                         }}
                     >
                         📚 Skills
@@ -628,11 +679,12 @@ export function GamePage() {
                         <button
                             onClick={() => setShowSkillsManager(false)}
                             style={{
-                                background: 'grey',
+                                background: 'var(--color-citadel-secondary)',
                                 color: 'white',
                                 border: 'none',
                                 padding: '8px 10px',
-                                cursor: 'pointer'
+                                cursor: 'pointer',
+                                borderRadius: '4px',
                             }}
                         >
                             Fechar Skills
@@ -656,19 +708,32 @@ export function GamePage() {
 
                 {/* RENDERIZAÇÃO CONDICIONAL PARA SKILLS */}
                 {showSkillsManager && (
-                    <div style={{ marginTop: '15px', border: '1px solid #48CAE4', padding: '10px' }}>
-                        <h4>Gerenciador de Skills</h4>
+                    <div style={{ marginTop: '15px', border: '1px solid var(--color-info)', padding: '10px', borderRadius: '4px' }}>
+                        <h4 style={{color: 'var(--color-info)'}}>Gerenciador de Skills</h4>
                         <AvailableSkillsDisplay
                             skills={availableSkills}
                             onLearnSkill={handleLearnSkill}
                         />
-                        <hr style={{ margin: '15px 0' }}/>
+                        <hr style={{ margin: '15px 0', borderColor: 'var(--color-border)' }}/>
                         <LearnedSkillsDisplay skills={learnedSkills} />
                     </div>
                 )}
 
-                <button onClick={logout} style={{ marginTop: '10px' }}>Sair</button>
-                <hr style={{ margin: '20px 0' }}/>
+                <button 
+                    onClick={logout} 
+                    style={{ 
+                        marginTop: '10px',
+                        background: 'var(--color-citadel-secondary)',
+                        color: 'white',
+                        border: 'none',
+                        padding: '8px 12px',
+                        cursor: 'pointer',
+                        borderRadius: '4px',
+                    }}
+                >
+                    Sair
+                </button>
+                <hr style={{ margin: '20px 0', borderColor: 'var(--color-border)' }}/>
                 <GameChat />
             </div>
         </div>
