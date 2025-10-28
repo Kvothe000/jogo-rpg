@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useNavigate, Link } from 'react-router-dom'; // 1. IMPORTE O 'Link'
+import { useNavigate, Link } from 'react-router-dom';
+import { MatrixBackground } from '../components/MatrixBackground';
 
 export function LoginPage() {
   const [email, setEmail] = useState('');
@@ -12,39 +13,226 @@ export function LoginPage() {
     e.preventDefault();
     try {
       await auth.login(email, pass);
-      navigate('/game'); // Redireciona para o jogo
+      navigate('/game');
     } catch (err) {
       console.error('Falha no login', err);
       alert('Email ou senha inválidos!');
     }
   };
 
-  return (
-    <div> {/* 2. É bom envolver tudo em uma <div> */}
-      <form onSubmit={handleSubmit}>
-        <h2>Login</h2>
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <input
-          type="password"
-          placeholder="Senha"
-          value={pass}
-          onChange={(e) => setPass(e.target.value)}
-        />
-        <button type="submit">Entrar</button>
-      </form>
+ return (
+    <div style={{
+      position: 'relative', // Para conter o background
+      width: '100%',      // Ocupa a largura disponível
+      minHeight: '100vh', // Garante altura mínima da viewport
+      display: 'flex',      // Usar flexbox
+      justifyContent: 'center', // Centralizar card horizontalmente
+      alignItems: 'center',  // Tentar centralizar card verticalmente
+      padding: '50px 20px',  // Padding para dar espaço (vertical/horizontal)
+      boxSizing: 'border-box',
+    }}>
+      <MatrixBackground /> {/* Deve ficar visível e fixo */}
 
-      <hr />
+      <div style={{
+        // ... (Estilos básicos do card: border, padding interno, backgroundColor, etc.)
+        border: '2px solid var(--color-citadel-accent)',
+        padding: '40px 30px',
+        backgroundColor: 'var(--color-citadel-primary)',
+        color: 'var(--color-citadel-text)',
+        borderRadius: '8px',
+        boxShadow: '0 0 30px var(--color-citadel-glow)',
+        width: '100%',
+        maxWidth: '400px', // Ou 450px para Register
+        textAlign: 'center',
+        position: 'relative', // Manter para zIndex
+        zIndex: 1,           // Manter
+      }}>
+        {/* Efeito de Glitch no título */}
+        <div style={{ 
+          marginBottom: '30px',
+          position: 'relative',
+          display: 'inline-block'
+        }}>
+          <h1 style={{
+            color: '#00EEFF',
+            fontFamily: "'Orbitron', sans-serif",
+            fontSize: '2rem',
+            marginBottom: '8px',
+            letterSpacing: '2px',
+            textShadow: '0 0 10px #00EEFF',
+            position: 'relative'
+          }}>
+            ECO DA RUPTURA
+            <span style={{
+              position: 'absolute',
+              top: 0,
+              left: '2px',
+              color: '#FF00FF',
+              textShadow: '2px 0 #FF00FF',
+              clipPath: 'polygon(0 0, 100% 0, 100% 90%, 0 90%)',
+              animation: 'glitch 3s infinite linear alternate-reverse'
+            }}>ECO DA RUPTURA</span>
+          </h1>
+          <p style={{ 
+            color: '#E0E1DD',
+            fontSize: '0.9em',
+            opacity: 0.8,
+            margin: 0
+          }}>
+            A Saga do Último Ressonante
+          </p>
+        </div>
 
-      {/* 3. ADICIONE O LINK AQUI */}
-      <p>
-        Não tem uma conta?{' '}
-        <Link to="/register">Crie uma aqui!</Link>
-      </p>
+        <form onSubmit={handleSubmit} style={{ width: '100%' }}>
+          <h2 style={{
+            color: '#00EEFF',
+            fontFamily: "'Orbitron', sans-serif",
+            textAlign: 'center',
+            marginBottom: '25px',
+            fontSize: '1.3em',
+            textShadow: '0 0 10px #00EEFF'
+          }}>
+            ACESSO DA INTERFACE
+          </h2>
+          
+          <div style={{ marginBottom: '20px', textAlign: 'left' }}>
+            <label style={{
+              display: 'block',
+              marginBottom: '8px',
+              color: '#E0E1DD',
+              fontSize: '0.9em',
+              fontWeight: 'bold'
+            }}>
+              📧 Email:
+            </label>
+            <input
+              type="email"
+              placeholder="seu@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              style={{
+                width: '100%',
+                padding: '12px',
+                border: '1px solid #415A77',
+                borderRadius: '4px',
+                backgroundColor: 'rgba(0,0,0,0.4)',
+                color: '#E0E1DD',
+                fontFamily: "'Courier New', monospace",
+                fontSize: '1em',
+                boxSizing: 'border-box',
+                outline: 'none'
+              }}
+            />
+          </div>
+
+          <div style={{ marginBottom: '25px', textAlign: 'left' }}>
+            <label style={{
+              display: 'block',
+              marginBottom: '8px',
+              color: '#E0E1DD',
+              fontSize: '0.9em',
+              fontWeight: 'bold'
+            }}>
+              🔒 Senha:
+            </label>
+            <input
+              type="password"
+              placeholder="••••••••"
+              value={pass}
+              onChange={(e) => setPass(e.target.value)}
+              required
+              style={{
+                width: '100%',
+                padding: '12px',
+                border: '1px solid #415A77',
+                borderRadius: '4px',
+                backgroundColor: 'rgba(0,0,0,0.4)',
+                color: '#E0E1DD',
+                fontFamily: "'Courier New', monospace",
+                fontSize: '1em',
+                boxSizing: 'border-box',
+                outline: 'none'
+              }}
+            />
+          </div>
+
+          <button 
+            type="submit" 
+            style={{
+              width: '100%',
+              padding: '14px',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontFamily: "'Orbitron', sans-serif",
+              fontSize: '1em',
+              fontWeight: 'bold',
+              textTransform: 'uppercase',
+              letterSpacing: '1px',
+              background: 'linear-gradient(135deg, #7209B7 0%, #FF00FF 100%)',
+              color: 'white',
+              marginBottom: '20px',
+              boxShadow: '0 0 20px rgba(255, 0, 255, 0.5)'
+            }}
+          >
+            🔓 INICIAR SESSÃO
+          </button>
+        </form>
+
+        <hr style={{ 
+          margin: '25px 0', 
+          borderColor: '#415A77',
+          borderStyle: 'dashed',
+          opacity: 0.5
+        }}/>
+
+        <p style={{ 
+          color: '#E0E1DD',
+          fontSize: '0.9em',
+          marginBottom: '25px'
+        }}>
+          Não tem uma conta?{' '}
+          <Link 
+            to="/register" 
+            style={{
+              color: '#00EEFF',
+              textDecoration: 'none',
+              fontWeight: 'bold'
+            }}
+          >
+            Crie uma identidade aqui!
+          </Link>
+        </p>
+
+        <div style={{
+          padding: '15px',
+          backgroundColor: 'rgba(0,0,0,0.4)',
+          borderRadius: '4px',
+          fontSize: '0.8em',
+          color: '#E0E1DD',
+          border: '1px solid #ffc107',
+          textAlign: 'left'
+        }}>
+          <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#ffc107' }}>
+            ⚠️ Aviso da Cidadela:
+          </p>
+          <p style={{ margin: 0, fontSize: '0.8em', lineHeight: '1.4' }}>
+            Todo acesso é monitorado pela Ordem. Ressonantes serão identificados e contidos.
+          </p>
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes glitch {
+          0% { transform: translate(0); }
+          20% { transform: translate(-2px, 2px); }
+          40% { transform: translate(-2px, -2px); }
+          60% { transform: translate(2px, 2px); }
+          80% { transform: translate(2px, -2px); }
+          100% { transform: translate(0); }
+        }
+      `}</style>
     </div>
   );
 }

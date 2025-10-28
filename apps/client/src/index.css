@@ -13,15 +13,21 @@
 
   /* Paleta Cidadela (Ordem) */
   --color-citadel-primary: #0D1B2A;  /* Azul-profundo */
-  --color-citadel-secondary: #415A77; /* Cinza-ardósia */
-  --color-citadel-accent: #6c757d;    /* Um cinza mais claro para detalhes */
+  --color-citadel-secondary: #1a237e; /* Azul da Interface - mais vibrante */
+  --color-citadel-accent: #415A77;    /* Cinza-ardósia para detalhes */
   --color-citadel-text: #E0E1DD;     /* Prateado */
+  --color-citadel-glow: #304ffe;     /* Azul para efeitos glow */
 
   /* Paleta Renegado (Caos/Eco) */
   --color-renegade-magenta: #FF00FF;
   --color-renegade-cyan: #00EEFF;
   --color-renegade-purple: #7209B7;
   --color-renegade-accent: #ff66ff; /* Magenta mais claro para hover/foco */
+  --color-renegade-glow: #00ffff;   /* Ciano para efeitos glow */
+
+  /* Cores de Glitch/Dados */
+  --color-glitch-primary: #00ff00;   /* Verde para glitches */
+  --color-glitch-secondary: #ff0000; /* Vermelho para glitches */
 
   /* Cores de Feedback */
   --color-hp: #dc3545;        /* Vermelho para HP */
@@ -47,61 +53,320 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ... (resto do index.css: body, h1, button, etc.) */
+/* Efeitos de Glitch */
+.glitch-text {
+  position: relative;
+  display: inline-block;
+}
+
+.glitch-text::before,
+.glitch-text::after {
+  content: attr(data-text);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.glitch-text::before {
+  left: 2px;
+  text-shadow: -2px 0 var(--color-glitch-primary);
+  clip: rect(24px, 550px, 90px, 0);
+  animation: glitch-anim 5s infinite linear alternate-reverse;
+}
+
+.glitch-text::after {
+  left: -2px;
+  text-shadow: -2px 0 var(--color-glitch-secondary);
+  clip: rect(85px, 550px, 140px, 0);
+  animation: glitch-anim2 5s infinite linear alternate-reverse;
+}
+
+@keyframes glitch-anim {
+  0% { clip: rect(42px, 9999px, 44px, 0); }
+  5% { clip: rect(12px, 9999px, 59px, 0); }
+  10% { clip: rect(48px, 9999px, 29px, 0); }
+  15% { clip: rect(42px, 9999px, 73px, 0); }
+  20% { clip: rect(63px, 9999px, 27px, 0); }
+  25% { clip: rect(34px, 9999px, 55px, 0); }
+  30% { clip: rect(86px, 9999px, 73px, 0); }
+  35% { clip: rect(20px, 9999px, 20px, 0); }
+  40% { clip: rect(26px, 9999px, 60px, 0); }
+  45% { clip: rect(25px, 9999px, 66px, 0); }
+  50% { clip: rect(57px, 9999px, 98px, 0); }
+  55% { clip: rect(5px, 9999px, 46px, 0); }
+  60% { clip: rect(82px, 9999px, 31px, 0); }
+  65% { clip: rect(54px, 9999px, 27px, 0); }
+  70% { clip: rect(28px, 9999px, 99px, 0); }
+  75% { clip: rect(45px, 9999px, 69px, 0); }
+  80% { clip: rect(23px, 9999px, 85px, 0); }
+  85% { clip: rect(54px, 9999px, 84px, 0); }
+  90% { clip: rect(45px, 9999px, 47px, 0); }
+  95% { clip: rect(37px, 9999px, 20px, 0); }
+  100% { clip: rect(4px, 9999px, 91px, 0); }
+}
+
+@keyframes glitch-anim2 {
+  0% { clip: rect(65px, 9999px, 100px, 0); }
+  5% { clip: rect(52px, 9999px, 74px, 0); }
+  10% { clip: rect(79px, 9999px, 85px, 0); }
+  15% { clip: rect(75px, 9999px, 5px, 0); }
+  20% { clip: rect(67px, 9999px, 61px, 0); }
+  25% { clip: rect(14px, 9999px, 79px, 0); }
+  30% { clip: rect(1px, 9999px, 66px, 0); }
+  35% { clip: rect(86px, 9999px, 30px, 0); }
+  40% { clip: rect(23px, 9999px, 98px, 0); }
+  45% { clip: rect(85px, 9999px, 72px, 0); }
+  50% { clip: rect(71px, 9999px, 75px, 0); }
+  55% { clip: rect(2px, 9999px, 48px, 0); }
+  60% { clip: rect(30px, 9999px, 16px, 0); }
+  65% { clip: rect(59px, 9999px, 50px, 0); }
+  70% { clip: rect(41px, 9999px, 62px, 0); }
+  75% { clip: rect(2px, 9999px, 82px, 0); }
+  80% { clip: rect(47px, 9999px, 73px, 0); }
+  85% { clip: rect(3px, 9999px, 27px, 0); }
+  90% { clip: rect(26px, 9999px, 55px, 0); }
+  95% { clip: rect(42px, 9999px, 97px, 0); }
+  100% { clip: rect(38px, 9999px, 49px, 0); }
+}
+
+/* Efeito de distorção digital */
+.digital-distortion {
+  position: relative;
+  overflow: hidden;
+}
+
+.digital-distortion::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(0, 255, 255, 0.1) 50%,
+    transparent 100%
+  );
+  animation: scan 2s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes scan {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
 
 /* Ajustar estilos base para usar variáveis */
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
+  padding: 0%;
   min-width: 320px;
   min-height: 100vh;
-  background-color: var(--color-background); /* Fundo geral */
-  color: var(--color-text); /* Cor de texto geral */
+  background: linear-gradient(135deg, var(--color-background) 0%, #050505 100%);
+  color: var(--color-text);
+  font-family: var(--font-main);
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-display); /* Usar fonte display para títulos */
-  color: var(--color-renegade-cyan); /* Exemplo: Títulos em ciano */
+  font-family: var(--font-display);
+  color: var(--color-renegade-cyan);
+  text-shadow: 0 0 10px var(--color-renegade-glow);
+  letter-spacing: 1px;
+}
+
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
 }
 
 button {
-  border-radius: 4px; /* Menos arredondado */
+  border-radius: 4px;
   border: 1px solid var(--color-border);
   padding: 0.6em 1.2em;
   font-size: 1em;
   font-weight: 500;
-  font-family: inherit;
-  background-color: var(--color-interactive-bg); /* Fundo base interativo */
+  font-family: var(--font-main);
+  background: linear-gradient(135deg, var(--color-interactive-bg) 0%, #2a2a4e 100%);
   color: var(--color-text);
   cursor: pointer;
-  transition: border-color 0.25s, background-color 0.25s;
+  transition: all 0.25s ease;
+  position: relative;
+  overflow: hidden;
 }
+
 button:hover {
-  border-color: var(--color-renegade-accent); /* Borda magenta clara no hover */
-  background-color: lighten(var(--color-interactive-bg), 5%); /* Levemente mais claro */
+  border-color: var(--color-renegade-accent);
+  background: linear-gradient(135deg, #2a2a4e 0%, #3a3a5e 100%);
+  box-shadow: 0 0 15px var(--color-renegade-accent);
+  transform: translateY(-2px);
 }
+
+button:focus,
+button:focus-visible {
+  outline: 2px solid var(--color-renegade-cyan);
+  outline-offset: 2px;
+}
+
+button.citadel {
+  background: linear-gradient(135deg, var(--color-citadel-primary) 0%, var(--color-citadel-secondary) 100%);
+  border-color: var(--color-citadel-accent);
+}
+
+button.citadel:hover {
+  border-color: var(--color-citadel-glow);
+  box-shadow: 0 0 15px var(--color-citadel-glow);
+}
+
+button.renegade {
+  background: linear-gradient(135deg, var(--color-renegade-purple) 0%, var(--color-renegade-magenta) 100%);
+  border-color: var(--color-renegade-cyan);
+}
+
+button.renegade:hover {
+  box-shadow: 0 0 20px var(--color-renegade-magenta);
+  animation: glitch-pulse 0.5s ease-in-out;
+}
+
+@keyframes glitch-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
 button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
   border-color: var(--color-border);
-  background-color: var(--color-interactive-bg);
+  background: var(--color-interactive-bg);
+  transform: none;
+  box-shadow: none;
 }
 
 /* Ajustar links */
 a {
   font-weight: 500;
-  color: var(--color-renegade-cyan); /* Links em ciano */
+  color: var(--color-renegade-cyan);
   text-decoration: inherit;
-}
-a:hover {
-  color: var(--color-renegade-accent); /* Magenta claro no hover */
+  transition: all 0.25s ease;
+  position: relative;
 }
 
-/* Remover centralização e padding excessivo se App.css fizer isso */
-/* #root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
-} */
+a:hover {
+  color: var(--color-renegade-accent);
+  text-shadow: 0 0 8px var(--color-renegade-glow);
+}
+
+a::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 0;
+  height: 1px;
+  background: var(--color-renegade-cyan);
+  transition: width 0.3s ease;
+}
+
+a:hover::after {
+  width: 100%;
+}
+
+/* Classes utilitárias para temas */
+.theme-citadel {
+  --current-primary: var(--color-citadel-primary);
+  --current-secondary: var(--color-citadel-secondary);
+  --current-accent: var(--color-citadel-accent);
+  --current-glow: var(--color-citadel-glow);
+}
+
+.theme-renegade {
+  --current-primary: var(--color-renegade-purple);
+  --current-secondary: var(--color-renegade-magenta);
+  --current-accent: var(--color-renegade-cyan);
+  --current-glow: var(--color-renegade-glow);
+}
+
+/* Barras de status temáticas */
+.status-bar {
+  height: 20px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+  position: relative;
+}
+
+.health-bar {
+  background: linear-gradient(90deg, var(--color-hp) 0%, #ff6b6b 100%);
+  box-shadow: 0 0 10px var(--color-hp);
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.eco-bar {
+  background: linear-gradient(90deg, var(--color-renegade-cyan) 0%, var(--color-renegade-magenta) 100%);
+  box-shadow: 0 0 10px var(--color-renegade-cyan);
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.xp-bar {
+  background: linear-gradient(90deg, var(--color-xp) 0%, #ffd93d 100%);
+  box-shadow: 0 0 10px var(--color-xp);
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+/* Efeitos de overlay para scripts/dados */
+.data-overlay {
+  position: relative;
+}
+
+.data-overlay::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: 
+    linear-gradient(90deg, transparent 0%, rgba(0, 238, 255, 0.05) 50%, transparent 100%),
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(255, 0, 255, 0.1) 2px,
+      rgba(255, 0, 255, 0.1) 4px
+    );
+  pointer-events: none;
+  z-index: 1;
+  animation: data-flow 3s linear infinite;
+}
+
+@keyframes data-flow {
+  0% { background-position: 0% 0%; }
+  100% { background-position: 100% 100%; }
+}
+
+/* Container principal do jogo */
+.game-container {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Efeito de ruído digital */
+.digital-noise::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: 
+    url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" opacity="0.05"><filter id="noise"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="1" stitchTiles="stitch"/></filter><rect width="100%" height="100%" filter="url(%23noise)"/></svg>');
+  pointer-events: none;
+  z-index: 2;
+}
