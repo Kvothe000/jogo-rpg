@@ -39,6 +39,16 @@ export function InventoryDisplay({ slots }: InventoryDisplayProps) {
     }
   };
 
+  const handleUseItem = (slotId: string) => {
+    if (!socket) {
+      console.error("Socket não conectado, impossível usar item.");
+      alert("Erro de conexão. Tente novamente.");
+      return;
+    }
+    console.log(`[InventoryDisplay] Emitindo useItem para slot ${slotId}`);
+    socket.emit('useItem', { slotId: slotId });
+  };
+
   return (
     <div style={{ 
       maxHeight: '400px', 
@@ -89,6 +99,7 @@ export function InventoryDisplay({ slots }: InventoryDisplayProps) {
                 </span>
               )}
 
+              {/* Botão Equipar/Desequipar para Equipamentos */}
               {slot.itemType === 'EQUIPMENT' && slot.itemSlot && (
                 <button
                   onClick={() => handleEquipToggle(slot.slotId, slot.isEquipped)}
@@ -114,6 +125,33 @@ export function InventoryDisplay({ slots }: InventoryDisplayProps) {
                   }}
                 >
                   {slot.isEquipped ? '❌ Desequipar' : '⚡ Equipar'}
+                </button>
+              )}
+
+              {/* Botão Usar para Consumíveis */}
+              {slot.itemType === 'CONSUMABLE' && (
+                <button
+                  onClick={() => handleUseItem(slot.slotId)}
+                  style={{
+                    marginLeft: '15px',
+                    padding: '5px 10px',
+                    fontSize: '0.75em',
+                    cursor: 'pointer',
+                    background: 'linear-gradient(135deg, var(--color-success) 0%, #8fbc8f 100%)',
+                    color: 'black',
+                    border: 'none',
+                    borderRadius: '3px',
+                    fontFamily: 'var(--font-main)',
+                    transition: 'all 0.3s ease'
+                  }}
+                  onMouseOver={(e) => { 
+                    e.currentTarget.style.boxShadow = '0 0 10px var(--color-success)'; 
+                  }}
+                  onMouseOut={(e) => { 
+                    e.currentTarget.style.boxShadow = 'none'; 
+                  }}
+                >
+                  🧪 Usar
                 </button>
               )}
             </div>

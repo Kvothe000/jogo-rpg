@@ -34,6 +34,9 @@ const SKILL_PRISMA_ILUSORIO = 'sk_prisma_ilusorio';
 const SKILL_POCA_SOMBRIA = 'sk_poca_sombria';
 const SKILL_BENCAO_RESTAURADORA = 'sk_bencao_restauradora';
 // --- FIM DOS IDs ---
+// --- NOVOS IDs PARA CONSUMÍVEIS ---
+const ITEM_SMALL_HEALTH_POTION = 'item_pocao_hp_pequena';
+const ITEM_SMALL_ECO_BATTERY = 'item_bateria_eco_pequena';
 
 async function main() {
   console.log('Iniciando o script de seed v2...');
@@ -387,6 +390,32 @@ async function main() {
       price: 2,
     },
   });
+  // --- NOVOS CONSUMÍVEIS ---
+  await prisma.item.upsert({
+    where: { id: ITEM_SMALL_HEALTH_POTION },
+    update: {},
+    create: {
+      id: ITEM_SMALL_HEALTH_POTION,
+      name: 'Poção de Vida Pequena',
+      description: 'Recupera uma pequena quantidade de HP.',
+      type: 'CONSUMABLE',
+      effectData: { healHp: 50 }, // Recupera 50 de HP
+      price: 15,
+    },
+  });
+
+  await prisma.item.upsert({
+    where: { id: ITEM_SMALL_ECO_BATTERY },
+    update: {},
+    create: {
+      id: ITEM_SMALL_ECO_BATTERY,
+      name: 'Bateria de Eco Pequena',
+      description: 'Recupera uma pequena quantidade de Eco.',
+      type: 'CONSUMABLE',
+      effectData: { restoreEco: 25 }, // Recupera 25 de Eco
+      price: 20,
+    },
+  });
   console.log('Itens criados.');
 
   // --- 7. MONSTROS ATUALIZADOS/NOVOS ---
@@ -408,6 +437,17 @@ async function main() {
         resistances: { physical: 0.3, shadowflame: -0.2 },
       },
       types: ['elemental', 'mana_construct'],
+      lootTable: {
+        drops: [
+          { itemId: ITEM_SLIME_GOO, minQty: 1, maxQty: 3, chance: 0.8 },
+          {
+            itemId: ITEM_SMALL_HEALTH_POTION,
+            minQty: 1,
+            maxQty: 3,
+            chance: 1.0,
+          },
+        ],
+      },
     },
     create: {
       id: MONSTER_TEMPLATE_SLIME,
@@ -428,7 +468,15 @@ async function main() {
       },
       types: ['elemental', 'mana_construct'],
       lootTable: {
-        drops: [{ itemId: ITEM_SLIME_GOO, minQty: 1, maxQty: 3, chance: 0.8 }],
+        drops: [
+          { itemId: ITEM_SLIME_GOO, minQty: 1, maxQty: 3, chance: 0.8 },
+          {
+            itemId: ITEM_SMALL_HEALTH_POTION,
+            minQty: 1,
+            maxQty: 3,
+            chance: 0.25,
+          },
+        ],
       },
     },
   });

@@ -5,6 +5,19 @@ import { ItemType, EquipSlot, PowerKeyword, Skill } from '@prisma/client';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { types } from 'util';
 
+// --- PAYLOAD TYPES ---
+
+/**
+ * Payload para atualizar os atributos base do jogador no cliente.
+ */
+export interface BaseStatsPayload {
+  strength: number;
+  dexterity: number;
+  intelligence: number;
+  constitution: number;
+  attributePoints: number;
+}
+
 // 1. Usamos 'Record<string, never>' para sermos explícitos
 interface ClientToServerEvents {
   sendChatMessage: (message: string) => void;
@@ -16,12 +29,15 @@ interface ClientToServerEvents {
   requestInventory: () => void;
   equipItem: (payload: { slotId: string }) => void;
   unequipItem: (payload: { slotId: string }) => void;
+  useItem: (payload: { slotId: string }) => void;
+  spendAttributePoint: (payload: { attribute: string }) => void; // <-- NOVO EVENTO
   requestKeywords: () => void;
   requestAvailableSkills: () => void; // Pedir skills que podem ser aprendidas
   requestLearnedSkills: () => void; // Pedir skills já aprendidas
   learnSkill: (payload: { skillId: string }) => void; // Tentar aprender uma skill
-  combatUseSkill: (payload: { skillId: string }) => void; // <-- NOVO EVENTO
+  combatUseSkill: (payload: { skillId: string }) => void;
 }
+
 // 2. Usamos 'Record<string, never>'
 interface ServerToClientEvents {
   receiveChatMessage: (payload: { sender: string; message: string }) => void;
@@ -59,6 +75,7 @@ interface ServerToClientEvents {
     eco: number;
     maxEco: number;
   }) => void;
+  playerBaseStatsUpdated: (payload: BaseStatsPayload) => void; // <-- NOVO EVENTO
 }
 
 // 3. Usamos 'Record<string, never>'
@@ -68,11 +85,13 @@ type InterServerEvents = Record<string, never>;
 interface SocketData {
   user: UserPayload;
 }
+
 export interface LootDropPayload {
   itemId: string;
   itemName: string;
   quantity: number;
 }
+
 // NOVO: Tipo para os dados de um slot do inventário enviados ao cliente
 export interface InventorySlotData {
   slotId: string; // ID do InventorySlot
@@ -85,6 +104,7 @@ export interface InventorySlotData {
   isEquipped: boolean;
   // Futuro: itemStats: Record<string, number>;
 }
+
 export interface CharacterTotalStats {
   // Inclui APENAS os stats que podem ser modificados por equipamento
   totalStrength: number;
@@ -96,12 +116,14 @@ export interface CharacterTotalStats {
   // Adicionar outros stats derivados se necessário (ex: totalDefense, totalAttack)
   types: string[];
 }
+
 // NOVO: Tipo para os dados de uma Keyword enviados ao cliente
 interface KeywordData {
   id: string;
   name: string;
   description: string;
 }
+
 // Dados enviados para "AvailableSkill" (simplificado para o frontend)
 export interface AvailableSkillData
   extends Omit<Skill, 'requiredKeywords' | 'characters'> {
@@ -114,6 +136,7 @@ export interface LearnedSkillData
   // level?: number; // Poderíamos adicionar o nível da skill aqui vindo de CharacterSkill
   requiredKeywordsData: Pick<PowerKeyword, 'id' | 'name'>[]; // Manter os requisitos visíveis
 }
+
 // 5. O tipo final está correto
 export type SocketWithAuth = Socket<
   ClientToServerEvents,
@@ -121,4 +144,5 @@ export type SocketWithAuth = Socket<
   InterServerEvents,
   SocketData
 >;
+
 export type { CombatUpdatePayload, KeywordData };

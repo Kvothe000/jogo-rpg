@@ -105,6 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         nextCharacter.level = nextCharacter.level ?? prevCharacter.level ?? 1;
         nextCharacter.xp = nextCharacter.xp ?? prevCharacter.xp ?? BigInt(0);
         nextCharacter.gold = nextCharacter.gold ?? prevCharacter.gold ?? 0;
+        nextCharacter.attributePoints = nextCharacter.attributePoints ?? prevCharacter.attributePoints ?? 0;
         nextCharacter.status = nextCharacter.status ?? prevCharacter.status ?? 'LOCKED';
         nextCharacter.hp = nextCharacter.hp ?? prevCharacter.hp ?? 100;
         nextCharacter.maxHp = nextCharacter.maxHp ?? prevCharacter.maxHp ?? 100;

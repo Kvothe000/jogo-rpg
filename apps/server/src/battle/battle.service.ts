@@ -741,15 +741,10 @@ export class BattleService {
         throw new NotFoundException('Personagem não encontrado.');
       combat.playerHp = charCurrentStats.hp;
 
-      const playerBaseTotalStats =
+      // CORREÇÃO: Extrair .totalStats e .character
+      const { totalStats: playerTotalStats, character: playerBaseCharacter } =
         await this.characterStatsService.calculateTotalStats(playerId);
-      const playerLevel =
-        (
-          await this.prisma.character.findUnique({
-            where: { id: playerId },
-            select: { level: true },
-          })
-        )?.level ?? 1;
+      const playerLevel = playerBaseCharacter.level ?? 1; // Usar o personagem já buscado
 
       const monsterStats = combat.monsterTemplate.stats as any;
       const monsterBaseStats: any = {
@@ -772,8 +767,9 @@ export class BattleService {
       const monsterTypes = combat.monsterTemplate.types ?? [];
 
       // Calcular stats modificados
+      // CORREÇÃO: Passar os stats corretos
       const playerModifiedStats = this.getModifiedStats(
-        playerBaseTotalStats,
+        playerTotalStats, // <--- Passar os stats TOTAIS aqui
         combat.playerEffects,
       );
       const monsterModifiedStats = this.getModifiedStats(
@@ -836,8 +832,9 @@ export class BattleService {
         return null;
       }
 
+      // Recalcular stats para defesa
       const playerModifiedStats_Def = this.getModifiedStats(
-        playerBaseTotalStats,
+        playerTotalStats,
         combat.playerEffects,
       );
       const monsterModifiedStats_Atk = this.getModifiedStats(
@@ -997,9 +994,10 @@ export class BattleService {
       }
 
       // --- STATS ---
-      const playerBaseTotalStats =
+      // CORREÇÃO: Extrair .totalStats e .character
+      const { totalStats: playerTotalStats, character: playerBaseCharacter } =
         await this.characterStatsService.calculateTotalStats(playerId);
-      const playerLevel = characterData.level ?? 1;
+      const playerLevel = characterData.level ?? 1; // Já tínhamos buscado
 
       const monsterStats = combat.monsterTemplate.stats as any;
       const monsterBaseStats: any = {
@@ -1021,8 +1019,9 @@ export class BattleService {
         ?.resistances;
 
       // Calcular stats modificados
+      // CORREÇÃO: Passar os stats corretos
       const playerModifiedStats = this.getModifiedStats(
-        playerBaseTotalStats,
+        playerTotalStats, // <--- Passar os stats TOTAIS aqui
         combat.playerEffects,
       );
       const monsterModifiedStats = this.getModifiedStats(
@@ -1170,8 +1169,9 @@ export class BattleService {
         return null;
       }
 
+      // Recalcular stats para defesa
       const playerModifiedStats_Def = this.getModifiedStats(
-        playerBaseTotalStats,
+        playerTotalStats,
         combat.playerEffects,
       );
       const monsterModifiedStats_Atk = this.getModifiedStats(
@@ -1338,16 +1338,22 @@ export class BattleService {
 
         if (novoXp >= BigInt(xpParaProximoLevel)) {
           novoLevel = char.level + 1;
-          const novoMaxHp = char.maxHp + 50;
-          const novoMaxEco = char.maxEco + 20;
+          const PONTOS_POR_LEVEL = 3; // Definimos quantos pontos o jogador ganha
+
+          // Não aumentamos mais MaxHp/MaxEco automaticamente.
+          // Apenas curamos o jogador para o seu máximo ATUAL.
           Object.assign(levelUpData, {
             level: novoLevel,
-            maxHp: novoMaxHp,
-            maxEco: novoMaxEco,
-            hp: novoMaxHp,
-            eco: novoMaxEco,
+            hp: char.maxHp, // Cura total
+            eco: char.maxEco, // Restaura total
+            attributePoints: {
+              // Usamos o 'increment' do Prisma para adicionar aos pontos existentes
+              increment: PONTOS_POR_LEVEL,
+            },
           });
-          log.push(`✨ LEVEL UP! Você alcançou o Nível ${novoLevel}!`);
+          log.push(
+            `✨ LEVEL UP! Você alcançou o Nível ${novoLevel} e ganhou ${PONTOS_POR_LEVEL} pontos de atributo!`,
+          );
           console.log(
             `[BattleService] Level Up detectado: ${char.level} -> ${novoLevel}`,
           );
@@ -1359,7 +1365,7 @@ export class BattleService {
           data: {
             xp: novoXp,
             gold: char.gold + goldGanho,
-            ...levelUpData,
+            ...levelUpData, // Isso aplicará o level, hp, eco, e o 'increment' de attributePoints
           },
         });
         console.log(

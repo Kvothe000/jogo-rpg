@@ -6,6 +6,7 @@ import { BattleModule } from 'src/battle/battle.module';
 import { InventoryModule } from 'src/inventory/inventory.module';
 import { CharacterStatsModule } from 'src/character-stats/character-stats.module';
 import { EcoModule } from 'src/eco/eco.module';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { SkillModule } from 'src/skill/skill.module';
 
 @Module({
@@ -17,6 +18,7 @@ import { SkillModule } from 'src/skill/skill.module';
     CharacterStatsModule,
     EcoModule,
     SkillModule,
+    EventEmitterModule,
   ],
   providers: [GameGateway],
   // exports: [GameGateway], // Mantenha comentado/removido

@@ -25,7 +25,10 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
-import { CharacterStatsService } from 'src/character-stats/character-stats.service';
+import {
+  CharacterStatsService,
+  CharacterAttribute,
+} from 'src/character-stats/character-stats.service';
 import { EcoService } from 'src/eco/eco.service';
 import { SkillService } from 'src/skill/skill.service';
 import { Skill } from '@prisma/client';
@@ -417,6 +420,113 @@ export class GameGateway
     }
   }
 
+  @SubscribeMessage('useItem')
+  async handleUseItem(
+    @ConnectedSocket() client: SocketWithAuth,
+    @MessageBody() payload: { slotId: string },
+  ) {
+    const characterId = client.data.user?.character?.id;
+    const slotIdToUse = payload?.slotId;
+
+    if (!characterId || !slotIdToUse) {
+      client.emit('serverMessage', 'Erro: Dados inválidos para usar item.');
+      return;
+    }
+
+    console.log(
+      `[GameGateway] Recebido useItem: char=${characterId}, slot=${slotIdToUse}`,
+    );
+
+    try {
+      const result = await this.inventoryService.useItem(
+        characterId,
+        slotIdToUse,
+      );
+
+      // Enviar mensagem de sucesso
+      client.emit('serverMessage', result.message);
+
+      // Atualizar inventário (item foi consumido)
+      const updatedInventory =
+        await this.inventoryService.getInventory(characterId);
+      client.emit('updateInventory', { slots: updatedInventory });
+
+      // Os vitais serão atualizados pelo listener de evento 'character.vitals.updated'
+    } catch (error) {
+      console.error(
+        `[GameGateway] Erro ao usar item (slot ${slotIdToUse}) para ${characterId}:`,
+        error,
+      );
+      const message =
+        error instanceof HttpException
+          ? error.message
+          : 'Erro desconhecido ao tentar usar o item.';
+      client.emit('serverMessage', `Falha ao usar: ${message}`);
+    }
+  }
+
+  // --- Handler para gastar pontos ---
+  @SubscribeMessage('spendAttributePoint')
+  async handleSpendAttributePoint(
+    @ConnectedSocket() client: SocketWithAuth,
+    @MessageBody() payload: { attribute: CharacterAttribute },
+  ) {
+    const characterId = client.data.user?.character?.id;
+    const attribute = payload?.attribute;
+
+    if (!characterId || !attribute) {
+      client.emit('serverMessage', 'Erro: Dados inválidos para gastar ponto.');
+      return;
+    }
+
+    console.log(
+      `[GameGateway] Recebido spendAttributePoint: char=${characterId}, attr=${attribute}`,
+    );
+
+    try {
+      // O serviço lida com a lógica, transação e emissão de eventos
+      await this.characterStatsService.spendAttributePoint(
+        characterId,
+        attribute,
+      );
+
+      // Enviar mensagem de sucesso
+      client.emit(
+        'serverMessage',
+        `Você aumentou ${this.translateAttribute(attribute)}!`,
+      );
+
+      // Os listeners 'character.vitals.updated' e 'character.baseStats.updated'
+      // cuidarão de enviar os novos stats para o cliente.
+    } catch (error) {
+      console.error(
+        `[GameGateway] Erro ao gastar ponto (${attribute}) para ${characterId}:`,
+        error,
+      );
+      const message =
+        error instanceof HttpException
+          ? error.message
+          : 'Erro desconhecido ao gastar ponto.';
+      client.emit('serverMessage', `Falha: ${message}`);
+    }
+  }
+
+  // Função auxiliar para traduzir o nome do atributo
+  private translateAttribute(attribute: CharacterAttribute): string {
+    switch (attribute) {
+      case 'strength':
+        return 'Força';
+      case 'dexterity':
+        return 'Destreza';
+      case 'intelligence':
+        return 'Inteligência';
+      case 'constitution':
+        return 'Constituição';
+      default:
+        return attribute;
+    }
+  }
+
   @SubscribeMessage('startCombat')
   async handleStartCombat(@ConnectedSocket() client: SocketWithAuth) {
     if (!client.data.user.character) {
@@ -770,37 +880,64 @@ export class GameGateway
     }
   }
 
-  @OnEvent('character.equipment.changed')
-  async handleEquipmentChanged(payload: { characterId: string }) {
-    const { characterId } = payload;
+  // Listener de VITAIS (HP/ECO) - (EXISTENTE)
+  @OnEvent('character.vitals.updated')
+  handleVitalsUpdated(payload: {
+    characterId: string;
+    vitals: { hp: number; maxHp: number; eco: number; maxEco: number };
+  }) {
+    const { characterId, vitals } = payload;
     console.log(
-      `[GameGateway] Evento character.equipment.changed RECEBIDO para ${characterId}`,
+      `[GameGateway] Evento character.vitals.updated RECEBIDO para ${characterId}`,
     );
 
-    try {
-      const totalStats =
-        await this.characterStatsService.calculateTotalStats(characterId);
-
-      const clientSocket = this.getClientSocket(characterId);
-      if (clientSocket) {
-        console.log(
-          `[GameGateway] Emitindo playerStatsUpdated para ${characterId} (${clientSocket.id})`,
-        );
-        clientSocket.emit('playerStatsUpdated', totalStats);
-      } else {
-        console.warn(
-          `[GameGateway] Socket não encontrado para ${characterId} em equipment.changed`,
-        );
+    const clientSocket = this.getClientSocket(characterId);
+    if (clientSocket) {
+      console.log(
+        `[GameGateway] Emitindo playerVitalsUpdated para ${characterId}`,
+      );
+      clientSocket.emit('playerVitalsUpdated', vitals);
+      // Atualizar também o estado interno do socket para a regeneração
+      if (clientSocket.data.user?.character) {
+        clientSocket.data.user.character = {
+          ...clientSocket.data.user.character,
+          ...vitals,
+        };
       }
-    } catch (error) {
-      console.error(
-        `[GameGateway] Erro ao processar equipment.changed para ${characterId}:`,
-        error,
+    }
+  }
+
+  // Listener para STATS BASE (STR/DEX/etc)
+  @OnEvent('character.baseStats.updated')
+  handleBaseStatsUpdated(payload: {
+    characterId: string;
+    baseStats: {
+      strength: number;
+      dexterity: number;
+      intelligence: number;
+      constitution: number;
+      attributePoints: number;
+    };
+  }) {
+    const { characterId, baseStats } = payload;
+    console.log(
+      `[GameGateway] Evento character.baseStats.updated RECEBIDO para ${characterId}`,
+    );
+
+    const clientSocket = this.getClientSocket(characterId);
+    if (clientSocket) {
+      console.log(
+        `[GameGateway] Emitindo playerBaseStatsUpdated para ${characterId}`,
       );
-      this.getClientSocket(characterId)?.emit(
-        'serverMessage',
-        'Erro ao atualizar stats após equipar/desequipar.',
-      );
+      clientSocket.emit('playerBaseStatsUpdated', baseStats);
+
+      // Atualizar também o estado interno do socket
+      if (clientSocket.data.user?.character) {
+        clientSocket.data.user.character = {
+          ...clientSocket.data.user.character,
+          ...baseStats,
+        };
+      }
     }
   }
 

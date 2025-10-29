@@ -7,6 +7,7 @@ import { KeywordsDisplay } from '../components/KeywordsDisplay';
 import { AvailableSkillsDisplay } from '../components/AvailableSkillsDisplay';
 import { LearnedSkillsDisplay } from '../components/LearnedSkillsDisplay';
 import { EffectsDisplay } from '../components/EffectsDisplay';
+import { CharacterStatsDisplay } from '../components/CharacterStatsDisplay';
 import toast from 'react-hot-toast';
 import type {
     CombatUpdatePayload,
@@ -25,6 +26,14 @@ interface RoomData {
     exits: Record<string, string>;
     players: { id: string; name: string }[];
     npcs: { id: string; name: string }[];
+}
+
+interface BaseStatsPayload {
+  strength: number;
+  dexterity: number;
+  intelligence: number;
+  constitution: number;
+  attributePoints: number;
 }
 
 interface CombatStartedPayload {
@@ -46,6 +55,7 @@ export function GamePage() {
     const [learnedSkills, setLearnedSkills] = useState<LearnedSkillData[]>([]);
     const [showSkillsManager, setShowSkillsManager] = useState(false);
     const [uiTheme, setUiTheme] = useState<'citadel' | 'renegade'>('citadel');
+    const [showStats, setShowStats] = useState(false);
 
     // Refs
     const userRef = useRef(user);
@@ -63,6 +73,9 @@ export function GamePage() {
             setUiTheme('citadel');
         }
     }, [combatData]);
+
+    // Verificar se há pontos de atributo não gastos
+    const hasUnspentPoints = (user?.character?.attributePoints ?? 0) > 0;
 
     // --- EFEITOS E LISTENERS ---
     useEffect(() => {
@@ -225,6 +238,42 @@ export function GamePage() {
             setLearnedSkills(payload.skills);
         };
 
+        // Listener para atualizar stats base (str, dex, pontos)
+        const handleBaseStatsUpdated = (payload: BaseStatsPayload) => {
+            console.log(
+                '[Socket] Recebido playerBaseStatsUpdated:',
+                payload,
+            );
+            // Atualiza o contexto Auth, que por sua vez atualiza a UI
+            updateProfileRef.current({
+                character: {
+                    strength: payload.strength,
+                    dexterity: payload.dexterity,
+                    intelligence: payload.intelligence,
+                    constitution: payload.constitution,
+                    attributePoints: payload.attributePoints,
+                } as any,
+            });
+        };
+
+        // Listener de Vitals (HP/ECO)
+        const handlePlayerVitalsUpdated = (payload: {
+            hp: number;
+            maxHp: number;
+            eco: number;
+            maxEco: number;
+        }) => {
+            console.log('[Socket] Recebido playerVitalsUpdated:', payload);
+            updateProfileRef.current({
+                character: {
+                    hp: payload.hp,
+                    maxHp: payload.maxHp,
+                    eco: payload.eco,
+                    maxEco: payload.maxEco,
+                } as any,
+            });
+        };
+
         // Liga os ouvintes
         socket.on('updateRoom', handleUpdateRoom);
         socket.on('npcDialogue', handleNpcDialogue);
@@ -239,6 +288,8 @@ export function GamePage() {
         socket.on('updateKeywords', handleUpdateKeywords);
         socket.on('updateAvailableSkills', handleUpdateAvailableSkills);
         socket.on('updateLearnedSkills', handleUpdateLearnedSkills);
+        socket.on('playerVitalsUpdated', handlePlayerVitalsUpdated);
+        socket.on('playerBaseStatsUpdated', handleBaseStatsUpdated);
 
         // Pedir skills aprendidas ao conectar
         handleRequestLearnedSkills();
@@ -258,6 +309,8 @@ export function GamePage() {
             socket.off('updateKeywords', handleUpdateKeywords);
             socket.off('updateAvailableSkills', handleUpdateAvailableSkills);
             socket.off('updateLearnedSkills', handleUpdateLearnedSkills);
+            socket.off('playerVitalsUpdated', handlePlayerVitalsUpdated);
+            socket.off('playerBaseStatsUpdated', handleBaseStatsUpdated);
         };
     }, [socket]);
 
@@ -456,7 +509,8 @@ export function GamePage() {
                                     <div 
                                         className="eco-bar"
                                         style={{ 
-                                            width: `${(currentEco / maxEco) * 100}%`,
+                                            // CORREÇÃO: Evitar divisão por zero
+                                            width: `${maxEco > 0 ? (currentEco / maxEco) * 100 : 0}%`,
                                             height: '100%'
                                         }}
                                     />
@@ -776,10 +830,11 @@ export function GamePage() {
                             <span style={{ color: 'var(--color-eco)' }}>{currentEco} / {maxEco}</span>
                         </div>
                         <div className="status-bar" style={{ height: '8px' }}>
-                            <div 
+                            <div
                                 className="eco-bar"
-                                style={{ 
-                                    width: `${(currentEco / maxEco) * 100}%`
+                                style={{
+                                    // CORREÇÃO: Evitar divisão por zero
+                                    width: `${maxEco > 0 ? (currentEco / maxEco) * 100 : 0}%`,
                                 }}
                             />
                         </div>
@@ -797,6 +852,30 @@ export function GamePage() {
                         <div>🧠 Inteligência: <strong>{user?.character?.intelligence}</strong></div>
                         <div>🛡️ Constituição: <strong>{user?.character?.constitution}</strong></div>
                     </div>
+                    
+                    {/* Pontos de Atributo */}
+                    {user?.character?.attributePoints && user.character.attributePoints > 0 && (
+                        <div style={{ 
+                            marginTop: '10px', 
+                            padding: '8px',
+                            backgroundColor: 'var(--color-renegade-purple)',
+                            borderRadius: '4px',
+                            border: '1px solid var(--color-renegade-magenta)',
+                            textAlign: 'center'
+                        }}>
+                            <div style={{ 
+                                color: 'var(--color-renegade-cyan)',
+                                fontWeight: 'bold',
+                                fontSize: '0.9em',
+                                marginBottom: '5px'
+                            }}>
+                                🎯 Pontos de Atributo Disponíveis: {user.character.attributePoints}
+                            </div>
+                            <div style={{ fontSize: '0.7em', opacity: 0.9 }}>
+                                Use pontos no menu de atributos
+                            </div>
+                        </div>
+                    )}
                     
                     <div style={{ marginTop: '10px' }}>
                         <div>💰 Ouro: <strong style={{ color: 'var(--color-warning)' }}>{user?.character?.gold}</strong></div>
@@ -817,6 +896,42 @@ export function GamePage() {
                     gap: '8px',
                     marginBottom: '10px'
                 }}>
+                    {/* Botão Personagem/Stats */}
+                    <button 
+                        onClick={() => setShowStats(true)}
+                        className="citadel"
+                        style={{ 
+                            border: 'none', 
+                            padding: '8px', 
+                            cursor: 'pointer',
+                            borderRadius: '4px',
+                            fontFamily: 'var(--font-main)',
+                            fontSize: '0.8em',
+                            position: 'relative'
+                        }}
+                    >
+                        👤 Personagem
+                        {hasUnspentPoints && (
+                            <span style={{
+                                position: 'absolute',
+                                top: '-5px',
+                                right: '-5px',
+                                background: 'var(--color-success)',
+                                color: 'white',
+                                borderRadius: '50%',
+                                width: '16px',
+                                height: '16px',
+                                fontSize: '0.6em',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                animation: 'pulse 1.5s infinite'
+                            }}>
+                                !
+                            </span>
+                        )}
+                    </button>
+
                     <button 
                         onClick={handleRequestInventory} 
                         className="citadel"
@@ -883,7 +998,7 @@ export function GamePage() {
                 </div>
 
                 {/* Botões de Fechar */}
-                {(showInventory || showKeywords || showSkillsManager) && (
+                {(showInventory || showKeywords || showSkillsManager || showStats) && (
                     <div style={{ 
                         display: 'flex', 
                         gap: '8px', 
@@ -941,10 +1056,33 @@ export function GamePage() {
                                 ❌ Fechar Skills
                             </button>
                         )}
+                        {showStats && (
+                            <button
+                                onClick={() => setShowStats(false)}
+                                className="citadel"
+                                style={{
+                                    border: 'none',
+                                    padding: '6px 10px',
+                                    cursor: 'pointer',
+                                    borderRadius: '4px',
+                                    fontFamily: 'var(--font-main)',
+                                    fontSize: '0.7em',
+                                    flex: '1'
+                                }}
+                            >
+                                ❌ Fechar Personagem
+                            </button>
+                        )}
                     </div>
                 )}
 
                 {/* Componentes Condicionais */}
+                {showStats && (
+                    <div style={{ marginTop: '10px' }}>
+                        <CharacterStatsDisplay onClose={() => setShowStats(false)} />
+                    </div>
+                )}
+
                 {showInventory && (
                     <div style={{ marginTop: '10px' }}>
                         <InventoryDisplay slots={inventorySlots} />

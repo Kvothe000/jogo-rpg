@@ -32,6 +32,7 @@ model Character {
   level        Int       @default(1)
   xp           BigInt    @default(0) // BigInt para números grandes
   gold         Int       @default(100)
+  attributePoints Int    @default(0)
   
   // --- Status da Lore (Renegado) ---
   status       CharacterStatus @default(LOCKED) // O status da "Maldição"
@@ -185,7 +186,10 @@ model Item {
   // Stats que o item dá
   // Ex: { "attack": 5, "maxHp": 20 }
   stats        Json      @default("{}")
-  
+  // Efeitos do item (para consumíveis)
+  // Ex: { "healHp": 50, "restoreEco": 25 }
+  effectData   Json      @default("{}")
+
   price        Int?      // Preço na loja (se for nulo, não pode ser vendido)
   
   // --- Relacionamentos ---
