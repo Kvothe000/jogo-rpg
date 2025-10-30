@@ -18,7 +18,14 @@ import type { TokenPayload } from 'src/auth/types/user-payload.type';
 import type { GameMap } from '@prisma/client';
 import { BattleService } from 'src/battle/battle.service';
 import { OnEvent } from '@nestjs/event-emitter';
-import { LootDropPayload } from 'src/game/types/socket-with-auth.type';
+import {
+  LootDropPayload,
+  InventorySlotData,
+  CharacterTotalStats,
+  BaseStatsPayload,
+  PrologueUpdatePayload,
+  DialogueOption,
+} from 'src/game/types/socket-with-auth.type';
 import { InventoryService } from 'src/inventory/inventory.service';
 import {
   HttpException,
@@ -205,6 +212,13 @@ export class GameGateway
       console.log(
         `✅ Cliente Conectado: ${userPayload.email} (Character ID: ${userPayload.character?.id})`,
       );
+
+      // --- LÓGICA DO PRÓLOGO ---
+      // Envia o estado atual do prólogo ANTES de enviar os dados da sala
+      // para que a UI do cliente saiba se deve mostrar o prólogo ou o jogo normal
+      this.triggerPrologueEvent(client); // Removido await
+      // --- FIM DA LÓGICA DO PRÓLOGO ---
+
       await this.sendRoomDataToClient(client);
 
       // Reiniciar loop se estava parado e há clientes
@@ -254,6 +268,9 @@ export class GameGateway
 
   @SubscribeMessage('playerLook')
   async handlePlayerLook(@ConnectedSocket() client: SocketWithAuth) {
+    // Envia o estado do prólogo primeiro
+    this.triggerPrologueEvent(client); // Removido await
+
     await this.sendRoomDataToClient(client);
   }
 
@@ -786,6 +803,126 @@ export class GameGateway
       client.emit('serverMessage', `Falha ao aprender skill: ${message}`);
     }
   }
+
+  // --- LÓGICA DO PRÓLOGO (CORRIGIDA) ---
+
+  /**
+   * Verifica o estado atual do prólogo do jogador e envia o evento apropriado.
+   */
+  private triggerPrologueEvent(client: SocketWithAuth): void {
+    // Removido async
+    // CORREÇÃO: Verificar 'character' primeiro
+    const character = client.data.user?.character;
+    if (!character || character.prologueState === 'COMPLETED') {
+      // Prólogo concluído ou personagem não existe, não envia nada
+      return;
+    }
+
+    const state = character.prologueState;
+    console.log(`[Prologue] Disparando evento para estado: ${state}`);
+
+    // Controla o fluxo do prólogo
+    switch (state) {
+      case 'SCENE_1_START':
+        // Cena 1: A Fachada Racha - Tarefa Inicial
+        client.emit('prologueUpdate', {
+          // CORREÇÃO: Usar 'step' em vez de 'scene' (TS2345)
+          step: 'SCENE_1_START',
+          message:
+            '>> Tarefa: Otimizar Fluxo de Dados 7-Alfa. Aproxime-se do <span class="highlight-interact">Terminal Primário</span> e inicie a calibração. <<',
+          targetId: 'terminal_primario_01',
+          scene: '',
+        });
+        break;
+
+      // (Outros estados do prólogo virão aqui)
+      // case 'SCENE_1_GLITCH': ...
+      // case 'SCENE_2_DETAINED': ...
+
+      default:
+        console.warn(`[Prologue] Estado do prólogo desconhecido: ${state}`);
+    }
+  }
+
+  /**
+   * Handler para quando o jogador interage com algo durante o prólogo.
+   */
+  @SubscribeMessage('prologueInteract')
+  async handlePrologueInteract(
+    @ConnectedSocket() client: SocketWithAuth,
+    @MessageBody() payload: { targetId?: string },
+  ) {
+    // CORREÇÃO: Verificar 'character' primeiro (TS18047)
+    const character = client.data.user?.character;
+    if (!character || character.prologueState === 'COMPLETED') return;
+
+    // Agora 'character' é seguro para usar
+    const state = character.prologueState;
+    const characterId = character.id;
+
+    console.log(
+      `[Prologue] Interação recebida: ${payload.targetId} no estado ${state}`,
+    );
+
+    // Lógica da Cena 1
+    if (
+      state === 'SCENE_1_START' &&
+      payload.targetId === 'terminal_primario_01'
+    ) {
+      // O jogador interagiu com o terminal correto.
+      // Vamos simular o GLITCH (Cena 1.3)
+
+      // Atualiza o estado do jogador no DB
+      const newState = 'SCENE_1_GLITCH';
+      await this.prisma.character.update({
+        where: { id: characterId },
+        data: { prologueState: newState },
+      });
+
+      // CORREÇÃO: (TS18047) Atribuir à variável 'character' local, que já foi verificada
+      character.prologueState = newState;
+
+      // Envia a atualização do "Glitch" para o cliente
+      client.emit('prologueUpdate', {
+        // CORREÇÃO: Usar 'step' em vez de 'scene' (TS2345)
+        step: newState,
+        message:
+          '//- PROJETO RESSONÂNCIA :: ECO DETECTADO :: AMEAÇA NÍVEL S_GMA -//',
+        scene: '',
+        targetId: '',
+      });
+
+      // TODO: Simular a chegada do Supervisor após um delay
+    }
+
+    // TODO: Adicionar lógica para outros estados (ex: CENA_2_DETAINED e payload.targetId === 'duto_ventilacao')
+  }
+
+  /**
+   * Handler para quando o jogador faz uma escolha de diálogo.
+   */
+  @SubscribeMessage('prologueChoice')
+  handlePrologueChoice(
+    @ConnectedSocket() client: SocketWithAuth,
+    @MessageBody() payload: { choiceId: string },
+  ) {
+    // CORREÇÃO: Verificar 'character' primeiro (TS18047)
+    const character = client.data.user?.character;
+    if (!character || character.prologueState === 'COMPLETED') return;
+
+    // Agora 'character' é seguro para usar
+    const state = character.prologueState;
+    const characterId = character.id;
+
+    console.log(
+      `[Prologue] Escolha recebida: ${payload.choiceId} no estado ${state}`,
+    );
+
+    // TODO: Adicionar lógica para 'switch(state)' e 'switch(payload.choiceId)'
+    // ex: if (state === 'SCENE_1_SUPERVISOR' && payload.choiceId === '1') { ... }
+  }
+
+  // --- FIM DA LÓGICA DO PRÓLOGO ---
 
   // --- OUVINTES DE EVENTOS ---
 

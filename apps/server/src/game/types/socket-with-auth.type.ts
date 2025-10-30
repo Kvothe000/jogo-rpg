@@ -113,11 +113,12 @@ export interface DialogueOption {
 }
 
 export interface PrologueUpdatePayload {
-  scene: number; // 1, 2, 3...
+  scene: string; // 1, 2, 3...
   step: string; // Ex: "TASK_ASSIGNED", "GLITCH_OCCURRED", "SUPERVISOR_DIALOGUE", "AWAITING_CHOICE"
   message?: string; // Mensagem principal a exibir (pode ser diálogo ou instrução)
   dialogueOptions?: DialogueOption[]; // Opções de diálogo para o jogador
   // Outros dados relevantes para a cena/passo podem ser adicionados aqui
+  targetId: string;
 }
 export interface CharacterTotalStats {
   // Inclui APENAS os stats que podem ser modificados por equipamento

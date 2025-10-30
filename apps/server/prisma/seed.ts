@@ -5,7 +5,9 @@ const prisma = new PrismaClient();
 // IDs fixos para podermos nos referir a eles
 const ROOM_ID_START = 'cl_starter_room';
 const ROOM_ID_HALLWAY = 'cl_hallway_01';
+const ROOM_ID_PROLOGUE = 'pr_optimization_sector'; // <-- NOVO ID
 const NPC_TEMPLATE_GUARD = 'npc_template_guard';
+const NPC_TEMPLATE_SUPERVISOR = 'npc_template_supervisor'; // <-- NOVO ID
 const MONSTER_TEMPLATE_SLIME = 'mon_slime_mana';
 const ITEM_SLIME_GOO = 'item_slime_goo';
 const ITEM_SHORT_SWORD = 'item_short_sword';
@@ -42,7 +44,22 @@ const ITEM_SMALL_ECO_BATTERY = 'item_bateria_eco_pequena';
 async function main() {
   console.log('Iniciando o script de seed v2...');
 
-  // --- 1. Criar a Sala Inicial (com uma saída) ---
+  // --- 1. Criar Salas (GameMap) ---
+  // Sala do Prólogo
+  await prisma.gameMap.upsert({
+    where: { id: ROOM_ID_PROLOGUE },
+    update: {},
+    create: {
+      id: ROOM_ID_PROLOGUE,
+      name: 'Setor de Otimização Gama',
+      description:
+        'Um ambiente asséptico da Cidadela, banhado em luz azul-fria. Terminais holográficos exibem fluxos de dados complexos. O ar é estéril, com um zumbido baixo de processamento. Ao centro, um <span class="highlight-interact">Terminal Primário</span> aguarda calibração.',
+      // Sem saídas visíveis inicialmente, a fuga será criada pelo prólogo
+      exits: {},
+    },
+  });
+
+  // Sala Inicial (Pós-Prólogo)
   await prisma.gameMap.upsert({
     where: { id: ROOM_ID_START },
     update: {
@@ -497,7 +514,25 @@ async function main() {
     },
   });
 
-  // Guarda Corrompido (Rank D)
+  // NPC Supervisor (Prólogo)
+  await prisma.nPCTemplate.upsert({
+    where: { id: NPC_TEMPLATE_SUPERVISOR },
+    update: {},
+    create: {
+      id: NPC_TEMPLATE_SUPERVISOR,
+      name: 'Supervisor',
+      description:
+        'Uma figura imponente da Cidadela, com implantes cibernéticos visíveis e um olhar severo. Ele zela pela Ordem.',
+      isHostile: false,
+      rank: 'B', // É um oficial de alto escalão
+      stats: {
+        // Não é para combate, mas define sua importância
+      },
+      types: ['cidadela', 'humano', 'autoridade'],
+    },
+  });
+
+  // Guarda da Cidadela
   await prisma.nPCTemplate.upsert({
     where: { id: NPC_TEMPLATE_GUARD },
     update: {
@@ -676,21 +711,28 @@ async function main() {
 
   console.log('Monstros criados/atualizados.');
 
-  // --- 8. Colocar Instância do NPC no Corredor ---
-  await prisma.nPCInstance.deleteMany({
-    where: {
+  // --- 8. Instâncias de NPC ---
+  // Coloca o Supervisor na sala do Prólogo
+  await prisma.nPCInstance.upsert({
+    where: { id: 'npc_inst_supervisor_01' },
+    update: {},
+    create: {
+      id: 'npc_inst_supervisor_01',
+      templateId: NPC_TEMPLATE_SUPERVISOR,
+      mapId: ROOM_ID_PROLOGUE,
+    },
+  });
+
+  // Coloca o Guarda na sala inicial (pós-prólogo)
+  await prisma.nPCInstance.upsert({
+    where: { id: 'npc_inst_guard_01' },
+    update: {},
+    create: {
+      id: 'npc_inst_guard_01',
       templateId: NPC_TEMPLATE_GUARD,
       mapId: ROOM_ID_HALLWAY,
     },
   });
-
-  const guardInstance = await prisma.nPCInstance.create({
-    data: {
-      template: { connect: { id: NPC_TEMPLATE_GUARD } },
-      map: { connect: { id: ROOM_ID_HALLWAY } },
-    },
-  });
-  console.log('Instância de NPC criada no corredor:', guardInstance.id);
 
   console.log('Seed v9 concluído.');
 }

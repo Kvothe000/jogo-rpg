@@ -8,6 +8,7 @@ import { AvailableSkillsDisplay } from '../components/AvailableSkillsDisplay';
 import { LearnedSkillsDisplay } from '../components/LearnedSkillsDisplay';
 import { EffectsDisplay } from '../components/EffectsDisplay';
 import { CharacterStatsDisplay } from '../components/CharacterStatsDisplay';
+import { PrologueDisplay } from '../components/PrologueDisplay';
 import toast from 'react-hot-toast';
 import type {
     CombatUpdatePayload,
@@ -16,7 +17,8 @@ import type {
     CharacterTotalStats,
     KeywordData,
     AvailableSkillData,
-    LearnedSkillData
+    LearnedSkillData,
+    PrologueUpdatePayload
 } from '../../../server/src/game/types/socket-with-auth.type';
 
 // Tipos necessários (definidos localmente)
@@ -231,7 +233,8 @@ export function GamePage() {
     const [showSkillsManager, setShowSkillsManager] = useState(false);
     const [uiTheme, setUiTheme] = useState<'citadel' | 'renegade'>('citadel');
     const [showStats, setShowStats] = useState(false);
-    const [isTransitioningUI, setIsTransitioningUI] = useState(false); // Estado para a animação
+    const [isTransitioningUI, setIsTransitioningUI] = useState(false);
+    const [prologueData, setPrologueData] = useState<PrologueUpdatePayload | null>(null);
 
     // Refs
     const userRef = useRef(user);
@@ -242,7 +245,8 @@ export function GamePage() {
     useEffect(() => { updateProfileRef.current = updateProfile; }, [updateProfile]);
 
     // Determinar se o jogador já despertou (baseado no status ou nível)
-    const isAwakened = user?.character?.status === 'AWAKENED'; // Mais preciso, focar no status
+    const isAwakened = user?.character?.status === 'AWAKENED';
+    const inPrologue = user?.character?.prologueState !== 'COMPLETED';
 
     // Muda o tema quando entrar em combate ou usar habilidades do Eco
     useEffect(() => {
@@ -257,13 +261,12 @@ export function GamePage() {
 
         // Verifica se a mudança foi de Cidadela para Renegada (O DESPERTAR!)
         if (previousTheme === 'citadel' && (isAwakened || combatData?.isActive)) {
-            setIsTransitioningUI(true); // Ativa a animação
-            // Remove a classe de animação após ela terminar
+            setIsTransitioningUI(true);
             setTimeout(() => {
                 setIsTransitioningUI(false);
-            }, 1200); // Duração da animação em CSS
+            }, 1200);
         }
-    }, [combatData, isAwakened, uiTheme]); // uiTheme adicionado para rastrear o 'previousTheme'
+    }, [combatData, isAwakened, uiTheme]);
 
     // Verificar se há pontos de atributo não gastos
     const hasUnspentPoints = (user?.character?.attributePoints ?? 0) > 0;
@@ -271,6 +274,12 @@ export function GamePage() {
     // --- EFEITOS E LISTENERS ---
     useEffect(() => {
         if (!socket) return;
+
+        // Listener do Prólogo
+        const handlePrologueUpdate = (payload: PrologueUpdatePayload) => {
+            console.log('[Socket] Recebido prologueUpdate:', payload);
+            setPrologueData(payload);
+        };
 
         const handleUpdateRoom = (data: RoomData) => {
             setRoom(data);
@@ -359,10 +368,6 @@ export function GamePage() {
 
                 const newGoldTotal = (currentUser?.character?.gold ?? 0) + payload.goldGained;
 
-                // A atualização de HP/Eco/MaxHP/MaxEco virá pelos eventos
-                // 'playerVitalsUpdated' e 'playerBaseStatsUpdated' disparados pelo backend
-                // após o level up ou gasto de pontos.
-                // Apenas atualizamos XP, Gold e Level aqui.
                 updateProfileRef.current({
                     character: {
                         xp: payload.newTotalXp,
@@ -423,7 +428,6 @@ export function GamePage() {
                 '[Socket] Recebido playerBaseStatsUpdated:',
                 payload,
             );
-            // Atualiza o contexto Auth, que por sua vez atualiza a UI
             updateProfileRef.current({
                 character: {
                     strength: payload.strength,
@@ -454,6 +458,7 @@ export function GamePage() {
         };
 
         // Liga os ouvintes
+        socket.on('prologueUpdate', handlePrologueUpdate);
         socket.on('updateRoom', handleUpdateRoom);
         socket.on('npcDialogue', handleNpcDialogue);
         socket.on('serverMessage', handleServerMessage);
@@ -475,6 +480,7 @@ export function GamePage() {
 
         // Função de limpeza
         return () => {
+            socket.off('prologueUpdate', handlePrologueUpdate);
             socket.off('updateRoom', handleUpdateRoom);
             socket.off('npcDialogue', handleNpcDialogue);
             socket.off('serverMessage', handleServerMessage);
@@ -577,7 +583,7 @@ export function GamePage() {
         }
     }, [socket]);
 
-    // Ações da Sala (MANTER "Olhar", REMOVER O RESTO)
+    // Ações da Sala
     const roomActions = (
         <div style={styles.roomActions}>
             <button 
@@ -587,7 +593,6 @@ export function GamePage() {
             >
                 👁️ Olhar ao Redor
             </button>
-            {/* REMOVIDOS OS BOTÕES DE INVENTÁRIO, PERSONAGEM, ETC. DAQUI */}
         </div>
     );
 
@@ -692,310 +697,316 @@ export function GamePage() {
                 </header>
             )}
 
-            {/* Conteúdo Principal */}
-            <main style={styles.mainContentArea}>
-                <div style={styles.backgroundImagePlaceholder}>
-                    <div className="scanlines" style={{ zIndex: 1, position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}></div>
-                </div>
-                <div style={styles.textContentContainer}>
-                    {!combatData?.isActive ? (
-                        // --- MODO EXPLORAÇÃO ---
-                        <>
-                            <h3 style={styles.roomTitle}>{room?.name}</h3>
-                            <p 
-                                style={styles.roomDescription}
-                                dangerouslySetInnerHTML={{ __html: room?.description || '' }}
-                            />
-                            
-                            {/* NPCs e Jogadores */}
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px' }}>
-                                {room.npcs && room.npcs.length > 0 && (
-                                    <div>
-                                        <h4 style={{ color: 'var(--color-info)', fontSize: '0.9em' }}>NPCs Presentes:</h4>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                            {room.npcs.map((npc: { id: string; name: string }) => (
-                                                <button 
-                                                    key={npc.id}
-                                                    onClick={() => handleInteractNpc(npc.id)}
-                                                    className="citadel"
-                                                    style={{
+            {/* --- Conteúdo Principal com Prólogo Integrado --- */}
+            {inPrologue && prologueData ? (
+                // 1. Se estamos NO PRÓLOGO, renderiza o Display do Prólogo
+                <PrologueDisplay {...prologueData} />
+            ) : (
+                // 2. Se NÃO estamos no prólogo, renderiza o jogo normal
+                <main style={styles.mainContentArea}>
+                    <div style={styles.backgroundImagePlaceholder}>
+                        <div className="scanlines" style={{ zIndex: 1, position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}></div>
+                    </div>
+                    <div style={styles.textContentContainer}>
+                        {!combatData?.isActive ? (
+                            // --- MODO EXPLORAÇÃO ---
+                            <>
+                                <h3 style={styles.roomTitle}>{room?.name}</h3>
+                                <p 
+                                    style={styles.roomDescription}
+                                    dangerouslySetInnerHTML={{ __html: room?.description || '' }}
+                                />
+                                
+                                {/* NPCs e Jogadores */}
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px' }}>
+                                    {room.npcs && room.npcs.length > 0 && (
+                                        <div>
+                                            <h4 style={{ color: 'var(--color-info)', fontSize: '0.9em' }}>NPCs Presentes:</h4>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                                {room.npcs.map((npc: { id: string; name: string }) => (
+                                                    <button 
+                                                        key={npc.id}
+                                                        onClick={() => handleInteractNpc(npc.id)}
+                                                        className="citadel"
+                                                        style={{
+                                                            padding: '6px 10px',
+                                                            border: 'none',
+                                                            borderRadius: '4px',
+                                                            cursor: 'pointer',
+                                                            fontFamily: 'var(--font-main)',
+                                                            fontSize: '0.8em',
+                                                            textAlign: 'left'
+                                                        }}
+                                                    >
+                                                        💬 {npc.name}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {room.players && room.players.length > 0 && (
+                                        <div>
+                                            <h4 style={{ color: 'var(--color-success)', fontSize: '0.9em' }}>Outros Jogadores:</h4>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                                {room.players.map((player: { id: string; name: string }) => (
+                                                    <div key={player.id} style={{ 
                                                         padding: '6px 10px',
-                                                        border: 'none',
+                                                        backgroundColor: 'rgba(255,255,255,0.1)',
                                                         borderRadius: '4px',
-                                                        cursor: 'pointer',
-                                                        fontFamily: 'var(--font-main)',
-                                                        fontSize: '0.8em',
-                                                        textAlign: 'left'
-                                                    }}
-                                                >
-                                                    💬 {npc.name}
-                                                </button>
-                                            ))}
+                                                        fontSize: '0.8em'
+                                                    }}>
+                                                        👤 {player.name}
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
-                                    </div>
-                                )}
+                                    )}
+                                </div>
 
-                                {room.players && room.players.length > 0 && (
-                                    <div>
-                                        <h4 style={{ color: 'var(--color-success)', fontSize: '0.9em' }}>Outros Jogadores:</h4>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                            {room.players.map((player: { id: string; name: string }) => (
-                                                <div key={player.id} style={{ 
-                                                    padding: '6px 10px',
-                                                    backgroundColor: 'rgba(255,255,255,0.1)',
+                                <hr style={{ 
+                                    margin: '15px 0', 
+                                    borderColor: 'var(--color-border)',
+                                    borderStyle: 'dashed'
+                                }}/>
+
+                                {/* Ações de Teste */}
+                                <div style={{ marginBottom: '20px' }}>
+                                    <h3 style={{ color: 'var(--color-warning)', fontSize: '1em', marginBottom: '10px' }}>Ações de Teste</h3>
+                                    <button 
+                                        onClick={handleStartCombat} 
+                                        className="renegade"
+                                        style={{ 
+                                            padding: '8px 12px', 
+                                            border: 'none', 
+                                            cursor: 'pointer',
+                                            borderRadius: '4px',
+                                            fontFamily: 'var(--font-main)',
+                                            fontSize: '0.8em',
+                                        }}
+                                    >
+                                        ⚔️ INICIAR COMBATE (TESTE)
+                                    </button>
+                                </div>
+
+                                <hr style={{ 
+                                    margin: '15px 0', 
+                                    borderColor: 'var(--color-border)',
+                                    borderStyle: 'dashed'
+                                }}/>
+
+                                {roomActions}
+                                
+                                {/* Saídas */}
+                                <div>
+                                    <h3 style={{ color: 'var(--color-info)', fontSize: '1em', marginBottom: '10px' }}>Saídas:</h3>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '8px' }}>
+                                        {Object.keys(room.exits).map((direction) => (
+                                            <button
+                                                key={direction}
+                                                onClick={() => handleMove(direction)}
+                                                className="citadel"
+                                                style={{ 
+                                                    textTransform: 'capitalize', 
+                                                    padding: '8px 10px',
+                                                    border: 'none',
                                                     borderRadius: '4px',
-                                                    fontSize: '0.8em'
-                                                }}>
-                                                    👤 {player.name}
-                                                </div>
-                                            ))}
+                                                    cursor: 'pointer',
+                                                    fontFamily: 'var(--font-main)',
+                                                    fontSize: '0.8em',
+                                                }}
+                                            >
+                                                🚪 {direction}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </>
+                        ) : (
+                            // --- MODO COMBATE ---
+                            <div style={styles.combatDisplay}>
+                                <h2 className="glitch-text" data-text={`LUTANDO CONTRA: ${combatData.monsterName}`} style={{ 
+                                    color: 'var(--color-danger)',
+                                    fontFamily: 'var(--font-display)',
+                                    textShadow: '0 0 10px var(--color-danger)',
+                                    fontSize: 'clamp(1.2rem, 3vw, 1.8rem)'
+                                }}>
+                                    Lutando contra: {combatData.monsterName}
+                                </h2>
+
+                                <div style={{ margin: '20px 0' }}>
+                                    <p>HP Monstro: 
+                                        <span style={{
+                                            color: 'var(--color-warning)',
+                                            textShadow: '0 0 5px var(--color-warning)',
+                                            fontWeight: 'bold'
+                                        }}> {combatData.monsterHp}</span> / {combatData.monsterMaxHp}
+                                    </p>
+                                    
+                                    {/* Efeitos do Monstro */}
+                                    <EffectsDisplay 
+                                        effects={combatData.monsterEffects} 
+                                        targetName={combatData.monsterName} 
+                                    />
+                                </div>
+
+                                {/* Barras de Status */}
+                                <div style={{ margin: '15px 0' }}>
+                                    <div style={{ marginBottom: '10px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8em', marginBottom: '2px' }}>
+                                            <span>Monstro HP:</span>
+                                            <span>{combatData.monsterHp}/{combatData.monsterMaxHp}</span>
+                                        </div>
+                                        <div className="status-bar" style={{ height: '12px' }}>
+                                            <div 
+                                                className="health-bar"
+                                                style={{ 
+                                                    width: `${(combatData.monsterHp / combatData.monsterMaxHp) * 100}%`,
+                                                    height: '100%'
+                                                }}
+                                            />
                                         </div>
                                     </div>
-                                )}
-                            </div>
 
-                            <hr style={{ 
-                                margin: '15px 0', 
-                                borderColor: 'var(--color-border)',
-                                borderStyle: 'dashed'
-                            }}/>
+                                    <div style={{ marginBottom: '10px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8em', marginBottom: '2px' }}>
+                                            <span>Seu HP:</span>
+                                            <span>{combatData.playerHp}/{combatData.playerMaxHp}</span>
+                                        </div>
+                                        <div className="status-bar" style={{ height: '12px' }}>
+                                            <div 
+                                                className="health-bar"
+                                                style={{ 
+                                                    width: `${(combatData.playerHp / combatData.playerMaxHp) * 100}%`,
+                                                    height: '100%'
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
 
-                            {/* Ações de Teste */}
-                            <div style={{ marginBottom: '20px' }}>
-                                <h3 style={{ color: 'var(--color-warning)', fontSize: '1em', marginBottom: '10px' }}>Ações de Teste</h3>
-                                <button 
-                                    onClick={handleStartCombat} 
-                                    className="renegade"
-                                    style={{ 
-                                        padding: '8px 12px', 
-                                        border: 'none', 
-                                        cursor: 'pointer',
-                                        borderRadius: '4px',
-                                        fontFamily: 'var(--font-main)',
-                                        fontSize: '0.8em',
-                                    }}
-                                >
-                                    ⚔️ INICIAR COMBATE (TESTE)
-                                </button>
-                            </div>
+                                    <div style={{ marginBottom: '10px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8em', marginBottom: '2px' }}>
+                                            <span>Seu Eco:</span>
+                                            <span>{currentEco}/{maxEco}</span>
+                                        </div>
+                                        <div className="status-bar" style={{ height: '12px' }}>
+                                            <div 
+                                                className="eco-bar"
+                                                style={{ 
+                                                    width: `${maxEco > 0 ? (currentEco / maxEco) * 100 : 0}%`,
+                                                    height: '100%'
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
 
-                            <hr style={{ 
-                                margin: '15px 0', 
-                                borderColor: 'var(--color-border)',
-                                borderStyle: 'dashed'
-                            }}/>
+                                {/* Efeitos do Jogador */}
+                                <div style={{ 
+                                    margin: '15px 0', 
+                                    borderTop: '1px dashed var(--color-border)', 
+                                    paddingTop: '15px' 
+                                }}>
+                                    <p style={{ fontWeight: 'bold' }}>
+                                        Seu HP: 
+                                        <span style={{
+                                            color: 'var(--color-hp)',
+                                            textShadow: '0 0 5px var(--color-hp)'
+                                        }}> {combatData.playerHp}</span> / {combatData.playerMaxHp}
+                                    </p>
+                                    <p style={{ 
+                                        fontWeight: 'bold', 
+                                        color: 'var(--color-eco)',
+                                        textShadow: '0 0 5px var(--color-renegade-cyan)'
+                                    }}>
+                                        Seu Eco: {currentEco} / {maxEco}
+                                    </p>
+                                    
+                                    {/* Efeitos do Jogador */}
+                                    <EffectsDisplay 
+                                        effects={combatData.playerEffects} 
+                                        targetName="Você" 
+                                    />
+                                </div>
 
-                            {roomActions}
-                            
-                            {/* Saídas */}
-                            <div>
-                                <h3 style={{ color: 'var(--color-info)', fontSize: '1em', marginBottom: '10px' }}>Saídas:</h3>
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '8px' }}>
-                                    {Object.keys(room.exits).map((direction) => (
-                                        <button
-                                            key={direction}
-                                            onClick={() => handleMove(direction)}
-                                            className="citadel"
-                                            style={{ 
-                                                textTransform: 'capitalize', 
-                                                padding: '8px 10px',
-                                                border: 'none',
-                                                borderRadius: '4px',
-                                                cursor: 'pointer',
-                                                fontFamily: 'var(--font-main)',
-                                                fontSize: '0.8em',
-                                            }}
-                                        >
-                                            🚪 {direction}
-                                        </button>
+                                <div style={styles.combatLog}>
+                                    {combatData.log.map((line: string, i: number) => (
+                                        <div key={i} style={styles.combatLogEntry}>
+                                            {line}
+                                        </div>
                                     ))}
                                 </div>
-                            </div>
-                        </>
-                    ) : (
-                        // --- MODO COMBATE ---
-                        <div style={styles.combatDisplay}>
-                            <h2 className="glitch-text" data-text={`LUTANDO CONTRA: ${combatData.monsterName}`} style={{ 
-                                color: 'var(--color-danger)',
-                                fontFamily: 'var(--font-display)',
-                                textShadow: '0 0 10px var(--color-danger)',
-                                fontSize: 'clamp(1.2rem, 3vw, 1.8rem)'
-                            }}>
-                                Lutando contra: {combatData.monsterName}
-                            </h2>
 
-                            <div style={{ margin: '20px 0' }}>
-                                <p>HP Monstro: 
-                                    <span style={{
-                                        color: 'var(--color-warning)',
-                                        textShadow: '0 0 5px var(--color-warning)',
-                                        fontWeight: 'bold'
-                                    }}> {combatData.monsterHp}</span> / {combatData.monsterMaxHp}
+                                <p style={{ marginTop: '10px', fontFamily: 'var(--font-display)', fontSize: '0.9em' }}>
+                                    Turno: {combatData.isPlayerTurn ?
+                                        <span style={{
+                                            color: 'var(--color-renegade-cyan)',
+                                            textShadow: '0 0 8px var(--color-renegade-cyan)',
+                                            animation: 'glitch-pulse 1s infinite'
+                                        }}>SEU TURNO</span> :
+                                        <span style={{
+                                            color: 'var(--color-warning)',
+                                            textShadow: '0 0 8px var(--color-warning)'
+                                        }}>Monstro</span>
+                                    }
                                 </p>
-                                
-                                {/* Efeitos do Monstro */}
-                                <EffectsDisplay 
-                                    effects={combatData.monsterEffects} 
-                                    targetName={combatData.monsterName} 
-                                />
-                            </div>
 
-                            {/* Barras de Status */}
-                            <div style={{ margin: '15px 0' }}>
-                                <div style={{ marginBottom: '10px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8em', marginBottom: '2px' }}>
-                                        <span>Monstro HP:</span>
-                                        <span>{combatData.monsterHp}/{combatData.monsterMaxHp}</span>
-                                    </div>
-                                    <div className="status-bar" style={{ height: '12px' }}>
-                                        <div 
-                                            className="health-bar"
-                                            style={{ 
-                                                width: `${(combatData.monsterHp / combatData.monsterMaxHp) * 100}%`,
-                                                height: '100%'
-                                            }}
-                                        />
-                                    </div>
-                                </div>
-
-                                <div style={{ marginBottom: '10px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8em', marginBottom: '2px' }}>
-                                        <span>Seu HP:</span>
-                                        <span>{combatData.playerHp}/{combatData.playerMaxHp}</span>
-                                    </div>
-                                    <div className="status-bar" style={{ height: '12px' }}>
-                                        <div 
-                                            className="health-bar"
-                                            style={{ 
-                                                width: `${(combatData.playerHp / combatData.playerMaxHp) * 100}%`,
-                                                height: '100%'
-                                            }}
-                                        />
-                                    </div>
-                                </div>
-
-                                <div style={{ marginBottom: '10px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8em', marginBottom: '2px' }}>
-                                        <span>Seu Eco:</span>
-                                        <span>{currentEco}/{maxEco}</span>
-                                    </div>
-                                    <div className="status-bar" style={{ height: '12px' }}>
-                                        <div 
-                                            className="eco-bar"
-                                            style={{ 
-                                                width: `${maxEco > 0 ? (currentEco / maxEco) * 100 : 0}%`,
-                                                height: '100%'
-                                            }}
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Efeitos do Jogador */}
-                            <div style={{ 
-                                margin: '15px 0', 
-                                borderTop: '1px dashed var(--color-border)', 
-                                paddingTop: '15px' 
-                            }}>
-                                <p style={{ fontWeight: 'bold' }}>
-                                    Seu HP: 
-                                    <span style={{
-                                        color: 'var(--color-hp)',
-                                        textShadow: '0 0 5px var(--color-hp)'
-                                    }}> {combatData.playerHp}</span> / {combatData.playerMaxHp}
-                                </p>
-                                <p style={{ 
-                                    fontWeight: 'bold', 
-                                    color: 'var(--color-eco)',
-                                    textShadow: '0 0 5px var(--color-renegade-cyan)'
+                                {/* Botões de Combate */}
+                                <div style={{ 
+                                    marginTop: '15px', 
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                                    gap: '8px'
                                 }}>
-                                    Seu Eco: {currentEco} / {maxEco}
-                                </p>
-                                
-                                {/* Efeitos do Jogador */}
-                                <EffectsDisplay 
-                                    effects={combatData.playerEffects} 
-                                    targetName="Você" 
-                                />
+                                    <button 
+                                        onClick={handleAttack} 
+                                        disabled={!combatData.isPlayerTurn}
+                                        className={combatData.isPlayerTurn ? 'renegade' : ''}
+                                        style={{ 
+                                            padding: '8px 12px', 
+                                            border: 'none', 
+                                            cursor: combatData.isPlayerTurn ? 'pointer' : 'not-allowed',
+                                            borderRadius: '4px',
+                                            fontFamily: 'var(--font-main)',
+                                            fontSize: '0.8em',
+                                        }}
+                                    >
+                                        ⚡ Ataque Básico
+                                    </button>
+
+                                    {learnedSkills.map((skill) => {
+                                        const hasEnoughEco = currentEco >= skill.ecoCost;
+                                        const canUse = combatData.isPlayerTurn && hasEnoughEco;
+                                        return (
+                                            <button
+                                                key={skill.id}
+                                                onClick={() => handleUseSkill(skill.id)}
+                                                disabled={!canUse}
+                                                className={canUse ? 'renegade' : ''}
+                                                title={`${skill.name} - Custo: ${skill.ecoCost} Eco\n${skill.description}`}
+                                                style={{
+                                                    padding: '8px 10px',
+                                                    border: 'none',
+                                                    cursor: canUse ? 'pointer' : 'not-allowed',
+                                                    opacity: canUse ? 1 : 0.6,
+                                                    borderRadius: '4px',
+                                                    fontFamily: 'var(--font-main)',
+                                                    fontSize: '0.8em',
+                                                    background: canUse ? 
+                                                        'linear-gradient(135deg, var(--color-renegade-purple) 0%, var(--color-renegade-magenta) 100%)' :
+                                                        'var(--color-citadel-secondary)',
+                                                }}
+                                            >
+                                                {skill.name} ({skill.ecoCost}⚡)
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
-
-                            <div style={styles.combatLog}>
-                                {combatData.log.map((line: string, i: number) => (
-                                    <div key={i} style={styles.combatLogEntry}>
-                                        {line}
-                                    </div>
-                                ))}
-                            </div>
-
-                            <p style={{ marginTop: '10px', fontFamily: 'var(--font-display)', fontSize: '0.9em' }}>
-                                Turno: {combatData.isPlayerTurn ?
-                                    <span style={{
-                                        color: 'var(--color-renegade-cyan)',
-                                        textShadow: '0 0 8px var(--color-renegade-cyan)',
-                                        animation: 'glitch-pulse 1s infinite'
-                                    }}>SEU TURNO</span> :
-                                    <span style={{
-                                        color: 'var(--color-warning)',
-                                        textShadow: '0 0 8px var(--color-warning)'
-                                    }}>Monstro</span>
-                                }
-                            </p>
-
-                            {/* Botões de Combate */}
-                            <div style={{ 
-                                marginTop: '15px', 
-                                display: 'grid',
-                                gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-                                gap: '8px'
-                            }}>
-                                <button 
-                                    onClick={handleAttack} 
-                                    disabled={!combatData.isPlayerTurn}
-                                    className={combatData.isPlayerTurn ? 'renegade' : ''}
-                                    style={{ 
-                                        padding: '8px 12px', 
-                                        border: 'none', 
-                                        cursor: combatData.isPlayerTurn ? 'pointer' : 'not-allowed',
-                                        borderRadius: '4px',
-                                        fontFamily: 'var(--font-main)',
-                                        fontSize: '0.8em',
-                                    }}
-                                >
-                                    ⚡ Ataque Básico
-                                </button>
-
-                                {learnedSkills.map((skill) => {
-                                    const hasEnoughEco = currentEco >= skill.ecoCost;
-                                    const canUse = combatData.isPlayerTurn && hasEnoughEco;
-                                    return (
-                                        <button
-                                            key={skill.id}
-                                            onClick={() => handleUseSkill(skill.id)}
-                                            disabled={!canUse}
-                                            className={canUse ? 'renegade' : ''}
-                                            title={`${skill.name} - Custo: ${skill.ecoCost} Eco\n${skill.description}`}
-                                            style={{
-                                                padding: '8px 10px',
-                                                border: 'none',
-                                                cursor: canUse ? 'pointer' : 'not-allowed',
-                                                opacity: canUse ? 1 : 0.6,
-                                                borderRadius: '4px',
-                                                fontFamily: 'var(--font-main)',
-                                                fontSize: '0.8em',
-                                                background: canUse ? 
-                                                    'linear-gradient(135deg, var(--color-renegade-purple) 0%, var(--color-renegade-magenta) 100%)' :
-                                                    'var(--color-citadel-secondary)',
-                                            }}
-                                        >
-                                            {skill.name} ({skill.ecoCost}⚡)
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </main>
+                        )}
+                    </div>
+                </main>
+            )}
 
             {/* Chat Persistente */}
             <GameChat />

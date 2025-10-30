@@ -50,13 +50,13 @@ export class AuthService {
           character: {
             create: {
               name: dto.characterName,
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
               class: dto.characterClass,
-              map: {
-                connect: {
-                  id: 'cl_starter_room',
-                },
-              },
+              // --- ATUALIZAÇÃO DO PRÓLOGO ---
+              // ID da sala do prólogo do seed.ts
+              mapId: 'pr_optimization_sector',
+              // Estado inicial do prólogo
+              prologueState: 'SCENE_1_START',
+              // --- FIM DA ATUALIZAÇÃO ---
               // --- NOVO: CONECTAR KEYWORDS INICIAIS ---
               powerKeywords: {
                 create: [
