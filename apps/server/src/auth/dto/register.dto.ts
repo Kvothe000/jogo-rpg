@@ -1,6 +1,13 @@
 // Precisamos instalar estas bibliotecas para validar os dados
 // Rode no terminal: pnpm install class-validator class-transformer
-import { IsEmail, IsNotEmpty, IsString, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsString,
+  IsEnum,
+  MinLength,
+} from 'class-validator';
+import { CharacterClass } from '@prisma/client';
 
 export class RegisterDto {
   @IsEmail({}, { message: 'Email inválido.' })
@@ -16,4 +23,8 @@ export class RegisterDto {
     message: 'O nome do personagem deve ter no mínimo 3 caracteres.',
   })
   characterName: string;
+  @IsEnum(CharacterClass, { message: 'Classe de personagem inválida.' })
+  @IsNotEmpty({ message: 'Classe é obrigatória.' })
+  characterClass: CharacterClass;
+  static characterClass: any;
 }

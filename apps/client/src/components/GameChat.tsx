@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useSocket } from '../contexts/SocketContext';
-import { useAuth } from '../contexts/AuthContext'; // Importar useAuth
+import { useAuth } from '../contexts/AuthContext';
 
 interface ChatMessage {
   sender: string;
@@ -9,20 +9,35 @@ interface ChatMessage {
 
 export function GameChat() {
   const { socket } = useSocket();
-  const { user } = useAuth(); // Obter o usuário do contexto de autenticação
+  const { user } = useAuth();
   const [chatLog, setChatLog] = useState<ChatMessage[]>([]);
   const [messageToSend, setMessageToSend] = useState('');
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [hasNewMessage, setHasNewMessage] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
+
+  const handleReceiveMessage = useCallback((payload: ChatMessage) => {
+    setChatLog((prevLog) => [...prevLog, payload]);
+    scrollToBottom();
+    if (!isExpanded) {
+      setHasNewMessage(true);
+    }
+  }, [isExpanded, scrollToBottom]);
+
+  const handleServerMessage = useCallback((message: string) => {
+    setChatLog((prevLog) => [...prevLog, { sender: 'SISTEMA', message }]);
+    scrollToBottom();
+    if (!isExpanded) {
+      setHasNewMessage(true);
+    }
+  }, [isExpanded, scrollToBottom]);
 
   useEffect(() => {
     if (!socket) return;
-
-    const handleReceiveMessage = (payload: ChatMessage) => {
-      setChatLog((prevLog) => [...prevLog, payload]);
-    };
-
-    const handleServerMessage = (message: string) => {
-      setChatLog((prevLog) => [...prevLog, { sender: 'SISTEMA', message }]);
-    };
 
     socket.on('receiveChatMessage', handleReceiveMessage);
     socket.on('serverMessage', handleServerMessage);
@@ -31,7 +46,13 @@ export function GameChat() {
       socket.off('receiveChatMessage', handleReceiveMessage);
       socket.off('serverMessage', handleServerMessage);
     };
-  }, [socket]);
+  }, [socket, handleReceiveMessage, handleServerMessage]);
+
+  useEffect(() => {
+    if (isExpanded) {
+      scrollToBottom();
+    }
+  }, [isExpanded, scrollToBottom]);
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,39 +62,101 @@ export function GameChat() {
     }
   };
 
+  const handleToggleExpand = () => {
+    setIsExpanded(!isExpanded);
+    if (!isExpanded) {
+      setHasNewMessage(false);
+      setTimeout(scrollToBottom, 50);
+    }
+  };
+
+  const chatContainerStyle = {
+    position: 'fixed' as const,
+    bottom: '70px',
+    left: '20px',
+    width: 'clamp(300px, 30%, 450px)',
+    border: '1px solid var(--color-border)',
+    borderRadius: '4px',
+    boxShadow: '0 0 10px rgba(0, 255, 255, 0.3)',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    fontFamily: 'var(--font-main)',
+    zIndex: 50,
+    transition: 'height 0.3s ease, opacity 0.3s ease',
+    overflow: 'hidden' as const,
+    ...(isExpanded 
+      ? {
+          height: '300px',
+          opacity: 1,
+          backgroundColor: 'rgba(0, 15, 20, 0.95)'
+        }
+      : {
+          height: '60px',
+          opacity: 0.6
+        }
+    )
+  };
+
+  const toggleButtonStyle = {
+    background: 'rgba(0,0,0,0.5)',
+    color: 'var(--color-renegade-cyan)',
+    border: 'none',
+    borderBottom: '1px solid var(--color-border)',
+    padding: '5px 10px',
+    cursor: 'pointer',
+    textAlign: 'left' as const,
+    fontSize: '0.8em',
+    fontFamily: 'var(--font-main)',
+    position: 'relative' as const
+  };
+
+  const newMessageIndicatorStyle = {
+    position: 'absolute' as const,
+    right: '10px',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    width: '8px',
+    height: '8px',
+    backgroundColor: 'var(--color-success)',
+    borderRadius: '50%',
+    boxShadow: '0 0 8px var(--color-success)'
+  };
+
   return (
-    <div style={{ 
-      border: '1px solid var(--color-border)', 
-      padding: '15px',
-      backgroundColor: 'var(--color-citadel-primary)',
-      borderRadius: '4px',
-      boxShadow: '0 0 15px var(--color-citadel-glow)'
-    }}>
-      <h4 style={{
-        color: 'var(--color-renegade-cyan)',
-        fontFamily: 'var(--font-display)',
-        textShadow: '0 0 5px var(--color-renegade-cyan)',
-        marginBottom: '15px',
-        textAlign: 'center'
-      }}>
-        CANAL DE COMUNICAÇÃO
-      </h4>
-      
-      {/* Log de Mensagens */}
+    <div
+      style={chatContainerStyle}
+      onMouseEnter={(e) => {
+        if (!isExpanded) {
+          e.currentTarget.style.opacity = '1';
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!isExpanded) {
+          e.currentTarget.style.opacity = '0.6';
+        }
+      }}
+    >
+      {/* Botão para expandir/recolher */}
+      <button onClick={handleToggleExpand} style={toggleButtonStyle}>
+        {isExpanded ? '▼ Recolher Chat' : `▲ Expandir Chat ${hasNewMessage ? ' (!)' : ''}`}
+        {hasNewMessage && !isExpanded && <span style={newMessageIndicatorStyle}></span>}
+      </button>
+
+      {/* Área de mensagens (visível apenas quando expandido) */}
       <div
-        style={{ 
-          height: '200px', 
-          overflowY: 'scroll', 
-          marginBottom: '15px', 
-          border: '1px solid var(--color-border)',
-          padding: '10px',
+        style={{
+          height: isExpanded ? 'calc(100% - 90px)' : '0',
+          overflowY: 'scroll' as const,
+          padding: isExpanded ? '10px' : '0',
           backgroundColor: 'rgba(0,0,0,0.3)',
-          borderRadius: '4px',
-          fontSize: '0.85em'
+          display: 'flex',
+          flexDirection: 'column' as const,
+          gap: '8px',
+          transition: 'all 0.3s ease'
         }}
       >
-        {chatLog.map((chat, index) => (
-          <div key={index} style={{ 
+        {isExpanded && chatLog.map((chat, index) => (
+          <div key={index} style={{
             marginBottom: '8px',
             padding: '5px',
             borderBottom: '1px solid rgba(255,255,255,0.1)'
@@ -89,21 +172,31 @@ export function GameChat() {
             </span>
           </div>
         ))}
+        <div ref={messagesEndRef} />
       </div>
 
-      {/* Input de Envio */}
-      <form onSubmit={handleSendMessage} style={{ display: 'flex', gap: '8px' }}>
+      {/* Input de envio (visível apenas quando expandido) */}
+      <form 
+        onSubmit={handleSendMessage} 
+        style={{
+          display: isExpanded ? 'flex' : 'none',
+          gap: '8px',
+          padding: '8px',
+          borderTop: '1px solid var(--color-border)',
+          backgroundColor: 'rgba(0,0,0,0.3)'
+        }}
+      >
         <input
           type="text"
           value={messageToSend}
           onChange={(e) => setMessageToSend(e.target.value)}
           placeholder="Digite sua mensagem..."
-          style={{ 
+          style={{
             flex: 1,
             padding: '8px',
             border: '1px solid var(--color-border)',
             borderRadius: '4px',
-            backgroundColor: 'rgba(0,0,0,0.3)',
+            backgroundColor: 'rgba(0,0,0,0.5)',
             color: 'var(--color-citadel-text)',
             fontFamily: 'var(--font-main)',
             fontSize: '0.9em'
@@ -111,7 +204,7 @@ export function GameChat() {
         />
         <button 
           type="submit" 
-          style={{ 
+          style={{
             padding: '8px 15px',
             background: 'linear-gradient(135deg, var(--color-renegade-purple) 0%, var(--color-renegade-magenta) 100%)',
             color: 'white',

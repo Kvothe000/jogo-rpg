@@ -18,6 +18,7 @@ interface AuthContextType {
     email: string,
     pass: string,
     charName: string,
+    characterClass: string,
   ) => Promise<void>;
   logout: () => void;
   updateProfile: (newUserData: Partial<UserPayload>) => void;
@@ -60,11 +61,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: string,
     pass: string,
     charName: string,
+    characterClass: string,
   ) => {
     await api.post('/auth/register', {
       email: email,
       password: pass,
       characterName: charName,
+      characterClass: characterClass,
     });
     await login(email, pass);
   };

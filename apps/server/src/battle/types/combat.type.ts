@@ -1,6 +1,7 @@
 // apps/server/src/battle/types/combat.type.ts
 
 import { NPCTemplate } from '@prisma/client';
+import { CharacterClass } from '@prisma/client';
 
 // --- INTERFACE PARA EFEITOS ATIVOS ---
 export interface ActiveEffect {
@@ -28,6 +29,7 @@ export interface CombatInstance {
   turn: number; // Adicionar contador de turnos
   playerEffects: ActiveEffect[]; // Array para efeitos no jogador
   monsterEffects: ActiveEffect[]; // Array para efeitos no monstro
+  playerClass: CharacterClass;
 }
 
 // --- TIPO SIMPLIFICADO PARA ENVIAR AO FRONTEND ---

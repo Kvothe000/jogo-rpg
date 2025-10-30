@@ -4,10 +4,14 @@ import { useNavigate, Link } from 'react-router-dom';
 import { MatrixBackground } from '../components/MatrixBackground';
 import toast from 'react-hot-toast';
 
+// Define o tipo de classe que esperamos (deve corresponder ao Prisma Enum)
+type CharacterClass = 'BRUTE' | 'STALKER' | 'ADEPT';
+
 export function RegisterPage() {
   const [email, setEmail] = useState('');
   const [pass, setPass] = useState('');
   const [charName, setCharName] = useState('');
+  const [characterClass, setCharacterClass] = useState<CharacterClass>('BRUTE'); // Estado para a classe
 
   const auth = useAuth();
   const navigate = useNavigate();
@@ -27,7 +31,7 @@ export function RegisterPage() {
 
     // Usar toast.promise para feedback
     await toast.promise(
-      auth.register(email, pass, charName),
+      auth.register(email, pass, charName, characterClass), // Passa a classe selecionada
       {
         loading: 'A criar identidade...',
         success: () => {
@@ -40,6 +44,53 @@ export function RegisterPage() {
         },
       }
     );
+  };
+
+  // Estilos inline
+  const styles = {
+    formGroup: {
+      marginBottom: '20px',
+      textAlign: 'left' as const,
+    },
+    label: {
+      display: 'block',
+      marginBottom: '8px',
+      color: '#E0E1DD',
+      fontSize: '0.9em',
+      fontWeight: 'bold' as const,
+    },
+    input: {
+      width: '100%',
+      padding: '12px',
+      border: '1px solid #415A77',
+      borderRadius: '4px',
+      backgroundColor: 'rgba(0,0,0,0.4)',
+      color: '#E0E1DD',
+      fontFamily: "'Courier New', monospace",
+      fontSize: '1em',
+      boxSizing: 'border-box' as const,
+      outline: 'none',
+    },
+    select: {
+      width: '100%',
+      padding: '12px',
+      border: '1px solid #415A77',
+      borderRadius: '4px',
+      backgroundColor: 'rgba(0,0,0,0.4)',
+      color: '#E0E1DD',
+      fontFamily: "'Courier New', monospace",
+      fontSize: '1em',
+      boxSizing: 'border-box' as const,
+      outline: 'none',
+    },
+    classDescription: {
+      fontSize: '0.8rem',
+      color: '#E0E1DD',
+      opacity: 0.7,
+      margin: '5px 0 0 0',
+      fontStyle: 'italic' as const,
+      minHeight: '2.5em', // Evita que o layout pule ao trocar
+    },
   };
 
   return (
@@ -116,14 +167,8 @@ export function RegisterPage() {
             CRIAR CONTA
           </h2>
           
-          <div style={{ marginBottom: '20px', textAlign: 'left' }}>
-            <label style={{
-              display: 'block',
-              marginBottom: '8px',
-              color: '#E0E1DD',
-              fontSize: '0.9em',
-              fontWeight: 'bold'
-            }}>
+          <div style={styles.formGroup}>
+            <label style={styles.label}>
               📧 Email:
             </label>
             <input
@@ -132,29 +177,12 @@ export function RegisterPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              style={{
-                width: '100%',
-                padding: '12px',
-                border: '1px solid #415A77',
-                borderRadius: '4px',
-                backgroundColor: 'rgba(0,0,0,0.4)',
-                color: '#E0E1DD',
-                fontFamily: "'Courier New', monospace",
-                fontSize: '1em',
-                boxSizing: 'border-box',
-                outline: 'none'
-              }}
+              style={styles.input}
             />
           </div>
 
-          <div style={{ marginBottom: '20px', textAlign: 'left' }}>
-            <label style={{
-              display: 'block',
-              marginBottom: '8px',
-              color: '#E0E1DD',
-              fontSize: '0.9em',
-              fontWeight: 'bold'
-            }}>
+          <div style={styles.formGroup}>
+            <label style={styles.label}>
               🔒 Senha (mín. 6 caracteres):
             </label>
             <input
@@ -163,29 +191,12 @@ export function RegisterPage() {
               value={pass}
               onChange={(e) => setPass(e.target.value)}
               required
-              style={{
-                width: '100%',
-                padding: '12px',
-                border: '1px solid #415A77',
-                borderRadius: '4px',
-                backgroundColor: 'rgba(0,0,0,0.4)',
-                color: '#E0E1DD',
-                fontFamily: "'Courier New', monospace",
-                fontSize: '1em',
-                boxSizing: 'border-box',
-                outline: 'none'
-              }}
+              style={styles.input}
             />
           </div>
 
-          <div style={{ marginBottom: '25px', textAlign: 'left' }}>
-            <label style={{
-              display: 'block',
-              marginBottom: '8px',
-              color: '#E0E1DD',
-              fontSize: '0.9em',
-              fontWeight: 'bold'
-            }}>
+          <div style={styles.formGroup}>
+            <label style={styles.label}>
               🎭 Nome do Personagem (mín. 3 caracteres):
             </label>
             <input
@@ -194,19 +205,32 @@ export function RegisterPage() {
               value={charName}
               onChange={(e) => setCharName(e.target.value)}
               required
-              style={{
-                width: '100%',
-                padding: '12px',
-                border: '1px solid #415A77',
-                borderRadius: '4px',
-                backgroundColor: 'rgba(0,0,0,0.4)',
-                color: '#E0E1DD',
-                fontFamily: "'Courier New', monospace",
-                fontSize: '1em',
-                boxSizing: 'border-box',
-                outline: 'none'
-              }}
+              style={styles.input}
             />
+          </div>
+
+          {/* --- SELETOR DE CLASSE --- */}
+          <div style={styles.formGroup}>
+            <label style={styles.label}>
+              ⚔️ Classe Inicial:
+            </label>
+            <select
+              value={characterClass}
+              onChange={(e) => setCharacterClass(e.target.value as CharacterClass)}
+              style={styles.select}
+            >
+              <option value="BRUTE">Bruto (Foco: Força)</option>
+              <option value="STALKER">Perseguidor (Foco: Destreza)</option>
+              <option value="ADEPT">Adepto (Foco: Inteligência)</option>
+            </select>
+            <p style={styles.classDescription}>
+              {characterClass === 'BRUTE' &&
+                'Focado no combate físico direto. Seu ataque básico escala com Força.'}
+              {characterClass === 'STALKER' &&
+                'Ágil e preciso. Seu ataque básico escala com Destreza.'}
+              {characterClass === 'ADEPT' &&
+                'Manipulador de Eco. Seu ataque básico escala com Inteligência.'}
+            </p>
           </div>
 
           <button 

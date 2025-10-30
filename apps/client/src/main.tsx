@@ -1,56 +1,56 @@
-// apps/client/src/main.tsx
 import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App.tsx';
-import { BrowserRouter } from 'react-router-dom';
-import { AuthProvider } from './contexts/AuthContext.tsx';
-import { SocketProvider } from './contexts/SocketContext.tsx';
-import { Toaster } from 'react-hot-toast'; // <-- 1. Importar o Toaster
+ import ReactDOM from 'react-dom/client';
+ import  App  from './App.tsx';
+ import './index.css';
+ import { AuthProvider } from './contexts/AuthContext.tsx';
+ import { SocketProvider } from './contexts/SocketContext.tsx';
+ import { BrowserRouter } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast'; // <-- ADICIONE IMPORT
 
-import './index.css';
-
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <BrowserRouter>
-      <AuthProvider>
-        <SocketProvider>
-          <App />
-          {/* 2. Adicionar o Toaster aqui (pode vir antes ou depois do App) */}
+ ReactDOM.createRoot(document.getElementById('root')!).render(
+   <React.StrictMode>
+     <BrowserRouter>
+       <AuthProvider>
+         <SocketProvider>
+           <App />
+          {/* Toaster Global Estilizado */}
           <Toaster
-            position="bottom-right" // Posição (pode escolher top-right, bottom-center, etc.)
+            position="bottom-right" // Posição que queríamos
             toastOptions={{
-              // Estilos base para os toasts (opcional, pode estilizar com CSS também)
+              duration: 3000,
               style: {
-                background: 'var(--color-interactive-bg)', // Usar cores do nosso tema
-                color: 'var(--color-text)',
-                border: '1px solid var(--color-border)',
-                fontFamily: 'var(--font-main)',
+                background: 'var(--color-renegade-bg-transparent, #0A191F)',
+                color: 'var(--color-renegade-text, #E0E0E0)',
+                border: '1px solid var(--color-border, #333)',
+                fontFamily: 'var(--font-main, sans-serif)',
+                boxShadow: '0 0 15px var(--color-renegade-glow, rgba(0,255,255,0.3))',
               },
-              // Estilos específicos para sucesso e erro
               success: {
                 style: {
-                  background: 'var(--color-success)', // Ou um verde mais temático
-                  color: 'black',
+                  background: 'rgba(10, 50, 20, 0.9)',
+                  borderColor: 'var(--color-success, #0f0)',
+                  boxShadow: '0 0 15px var(--color-success-glow, rgba(0,255,0,0.3))',
                 },
                 iconTheme: {
-                  primary: 'black',
-                  secondary: 'var(--color-success)',
+                  primary: 'var(--color-success, #0f0)',
+                  secondary: '#000',
                 },
               },
               error: {
                 style: {
-                  background: 'var(--color-danger)', // Ou um vermelho mais temático
-                  color: 'white',
+                  background: 'rgba(50, 10, 20, 0.9)',
+                  borderColor: 'var(--color-danger, #f00)',
+                  boxShadow: '0 0 15px var(--color-danger-glow, rgba(255,0,0,0.3))',
                 },
-                 iconTheme: {
-                  primary: 'white',
-                  secondary: 'var(--color-danger)',
+                iconTheme: {
+                  primary: 'var(--color-danger, #f00)',
+                  secondary: '#FFF',
                 },
               },
             }}
           />
-        </SocketProvider>
-      </AuthProvider>
-    </BrowserRouter>
-  </React.StrictMode>,
-);
+         </SocketProvider>
+       </AuthProvider>
+     </BrowserRouter>
+   </React.StrictMode>,
+ );

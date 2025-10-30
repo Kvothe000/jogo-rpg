@@ -50,6 +50,8 @@ export class AuthService {
           character: {
             create: {
               name: dto.characterName,
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+              class: dto.characterClass,
               map: {
                 connect: {
                   id: 'cl_starter_room',

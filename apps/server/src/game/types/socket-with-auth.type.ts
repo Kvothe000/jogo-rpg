@@ -36,6 +36,8 @@ interface ClientToServerEvents {
   requestLearnedSkills: () => void; // Pedir skills já aprendidas
   learnSkill: (payload: { skillId: string }) => void; // Tentar aprender uma skill
   combatUseSkill: (payload: { skillId: string }) => void;
+  prologueInteract: (payload: { targetId?: string }) => void; // Interagir com terminal, duto, etc.
+  prologueChoice: (payload: { choiceId: string }) => void;
 }
 
 // 2. Usamos 'Record<string, never>'
@@ -76,6 +78,7 @@ interface ServerToClientEvents {
     maxEco: number;
   }) => void;
   playerBaseStatsUpdated: (payload: BaseStatsPayload) => void; // <-- NOVO EVENTO
+  prologueUpdate: (payload: PrologueUpdatePayload) => void;
 }
 
 // 3. Usamos 'Record<string, never>'
@@ -104,7 +107,18 @@ export interface InventorySlotData {
   isEquipped: boolean;
   // Futuro: itemStats: Record<string, number>;
 }
+export interface DialogueOption {
+  id: string; // Identificador da opção (ex: "1", "2")
+  text: string; // Texto que o jogador vê
+}
 
+export interface PrologueUpdatePayload {
+  scene: number; // 1, 2, 3...
+  step: string; // Ex: "TASK_ASSIGNED", "GLITCH_OCCURRED", "SUPERVISOR_DIALOGUE", "AWAITING_CHOICE"
+  message?: string; // Mensagem principal a exibir (pode ser diálogo ou instrução)
+  dialogueOptions?: DialogueOption[]; // Opções de diálogo para o jogador
+  // Outros dados relevantes para a cena/passo podem ser adicionados aqui
+}
 export interface CharacterTotalStats {
   // Inclui APENAS os stats que podem ser modificados por equipamento
   totalStrength: number;

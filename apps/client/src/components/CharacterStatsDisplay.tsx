@@ -25,7 +25,7 @@ export function CharacterStatsDisplay({
   if (!character) {
     // Mantém um estilo básico se o personagem não carregou
     return (
-      <div style={styles.container}>
+      <div style={styles.container} className="theme-renegade data-overlay modal-enter-animation">
         <p>Carregando dados do personagem...</p>
         <button onClick={onClose} style={styles.closeButton}>
           Fechar
@@ -44,12 +44,15 @@ export function CharacterStatsDisplay({
   const hasPoints = character.attributePoints > 0;
 
   return (
-    // Aplica a classe de tema para herdar estilos se necessário
-    <div style={styles.container} className="theme-citadel data-overlay">
+    // Aplica as classes atualizadas para tema renegade e animação
+    <div
+      style={styles.container}
+      className="theme-renegade data-overlay modal-enter-animation" // Adiciona animação e tema
+    >
       <button onClick={onClose} style={styles.closeButton} className="citadel">
         ❌ Fechar
       </button>
-      <h3 style={styles.title}>Atributos</h3>
+      <h3 style={styles.title}>ATRIBUTOS</h3>
       <div style={styles.pointsDisplay}>
         Pontos Disponíveis:{' '}
         <span style={styles.pointsValue}>{character.attributePoints}</span>
@@ -127,59 +130,66 @@ export function CharacterStatsDisplay({
 // Estilos atualizados usando CSS Variables do index.css
 const styles: Record<string, React.CSSProperties> = {
   container: {
-    // Posição ajustada para sobrepor
-    position: 'absolute', // Ou 'fixed' se preferir cobrir a tela toda
-    top: '15%', // Ajuste conforme necessário
+    // Posição fixa para modal sobreposto
+    position: 'fixed',
+    top: '50%',
     left: '50%',
-    transform: 'translateX(-50%)', // Centraliza horizontalmente
-    width: 'clamp(300px, 80%, 450px)', // Largura responsiva
+    transform: 'translate(-50%, -50%)',
+    zIndex: 1000,
+    width: '90%',
+    maxWidth: '450px',
+    maxHeight: '80vh',
     backgroundColor: 'var(--color-citadel-primary)',
     border: '1px solid var(--color-border)',
-    boxShadow: '0 0 20px var(--color-citadel-glow)',
+    boxShadow: '0 0 30px var(--color-renegade-glow)',
     color: 'var(--color-citadel-text)',
     fontFamily: 'var(--font-main)',
-    padding: '20px',
-    borderRadius: '4px',
-    zIndex: 100, // Garante que fica por cima
+    padding: '25px',
+    borderRadius: '8px',
     display: 'flex',
     flexDirection: 'column',
-    gap: '15px',
+    gap: '20px',
+    overflowY: 'auto',
   },
   title: {
     textAlign: 'center',
     margin: '0 0 10px 0',
-    fontFamily: 'var(--font-display)', // Fonte de display
-    color: 'var(--color-renegade-cyan)', // Cor neon
-    textShadow: '0 0 8px var(--color-renegade-cyan)', // Glow
-    fontSize: '1.2em',
+    fontFamily: 'var(--font-display)',
+    color: 'var(--color-renegade-cyan)',
+    textShadow: '0 0 10px var(--color-renegade-cyan)',
+    fontSize: '1.4em',
+    borderBottom: '2px solid var(--color-renegade-cyan)',
+    paddingBottom: '10px',
   },
   closeButton: {
     position: 'absolute',
-    top: '8px',
-    right: '8px',
-    // Usa estilos de botão do index.css (classe 'citadel')
-    padding: '4px 8px',
-    fontSize: '0.7em',
+    top: '12px',
+    right: '12px',
+    padding: '6px 10px',
+    fontSize: '0.8em',
     cursor: 'pointer',
-    border: '1px solid var(--color-danger)', // Borda vermelha para fechar
+    border: '1px solid var(--color-danger)',
     color: 'var(--color-danger)',
     backgroundColor: 'rgba(0,0,0,0.3)',
+    borderRadius: '4px',
+    transition: 'all 0.3s ease',
   },
   pointsDisplay: {
     textAlign: 'center',
-    fontSize: '1.1em',
+    fontSize: '1.2em',
     color: 'var(--color-citadel-text)',
     backgroundColor: 'rgba(0,0,0,0.3)',
-    padding: '8px',
-    borderRadius: '4px',
+    padding: '12px',
+    borderRadius: '6px',
     border: '1px dashed var(--color-border)',
-  },
-  pointsValue: { // Estilo específico para o número de pontos
     fontWeight: 'bold',
-    color: 'var(--color-success)', // Verde para pontos disponíveis
+  },
+  pointsValue: {
+    fontWeight: 'bold',
+    color: 'var(--color-success)',
     marginLeft: '10px',
-    fontSize: '1.3em',
-    textShadow: '0 0 5px var(--color-success)',
+    fontSize: '1.4em',
+    textShadow: '0 0 8px var(--color-success)',
   },
   statList: {
     listStyle: 'none',
@@ -187,48 +197,53 @@ const styles: Record<string, React.CSSProperties> = {
     margin: 0,
     display: 'flex',
     flexDirection: 'column',
-    gap: '8px', // Espaçamento menor
+    gap: '12px',
   },
   statItem: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '8px 12px',
+    padding: '12px 15px',
     border: '1px solid var(--color-border)',
     backgroundColor: 'rgba(0,0,0,0.2)',
-    borderRadius: '4px',
+    borderRadius: '6px',
+    transition: 'all 0.3s ease',
   },
   statName: {
     fontWeight: 'bold',
     color: 'var(--color-citadel-text)',
-    flexBasis: '30%', // Define uma base para o nome
-    fontSize: '0.9em',
+    flexBasis: '30%',
+    fontSize: '1em',
   },
   statValue: {
-    fontSize: '1.1em',
-    color: 'var(--color-warning)', // Amarelo para valores de stat
-    flexBasis: '30%', // Define uma base para o valor
+    fontSize: '1.3em',
+    color: 'var(--color-warning)',
+    flexBasis: '30%',
     textAlign: 'center',
     fontWeight: 'bold',
+    textShadow: '0 0 5px var(--color-warning)',
   },
   plusButton: {
-    // Usa a classe 'renegade' para o estilo base (gradiente, etc.)
-    width: '28px',
-    height: '28px',
-    lineHeight: '26px', // Ajustar para centralizar o '+'
+    width: '32px',
+    height: '32px',
+    lineHeight: '30px',
     padding: 0,
-    fontSize: '1.1em',
+    fontSize: '1.2em',
     cursor: 'pointer',
-    borderRadius: '50%', // Botão redondo
+    borderRadius: '50%',
     textAlign: 'center',
-    // Adiciona sombra no hover via CSS global da classe .renegade
+    border: 'none',
+    transition: 'all 0.3s ease',
   },
   hint: {
-    fontSize: '0.8em',
+    fontSize: '0.9em',
     textAlign: 'center',
     color: 'var(--color-citadel-text)',
-    opacity: 0.7,
-    margin: '5px 0 0 0',
+    opacity: 0.8,
+    margin: '10px 0 0 0',
     fontStyle: 'italic',
+    padding: '10px',
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    borderRadius: '4px',
   },
 };

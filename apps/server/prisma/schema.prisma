@@ -27,7 +27,7 @@ model Character {
   id           String    @id @default(cuid())
   name         String    @unique
   createdAt    DateTime  @default(now())
-
+  prologueState String    @default("NOT_STARTED")
   // --- Atributos Principais ---
   level        Int       @default(1)
   xp           BigInt    @default(0) // BigInt para números grandes
@@ -42,12 +42,13 @@ model Character {
   maxHp        Int       @default(100)
   eco          Int       @default(50) // "Eco" é a nossa mana
   maxEco       Int       @default(50)
-
+  // --- Classe Inicial ---
+  class        CharacterClass @default(BRUTE)
   // --- Atributos Base ---
-  strength     Int       @default(5) // Força
-  dexterity    Int       @default(5) // Destreza
-  intelligence Int       @default(5) // Inteligência (afeta o Eco)
-  constitution Int       @default(5) // Vitalidade (afeta o HP)
+  strength     Int       @default(10) // Força
+  dexterity    Int       @default(10) // Destreza
+  intelligence Int       @default(10) // Inteligência (afeta o Eco)
+  constitution Int       @default(10) // Vitalidade (afeta o HP)
 
   // --- Localização no Mundo ---
   // O 'mapId' nos diz em qual sala o jogador está
@@ -151,7 +152,7 @@ model PowerKeyword {
   id          String   @id @default(cuid())
   name        String   @unique
   description String   @db.Text
-  
+  rank        String   @default("E")
   // --- Relacionamentos ---
   characters CharacterPowerKeyword[]
   skills     Skill[] // Habilidades que REQUEREM este keyword
@@ -293,6 +294,13 @@ model CharacterQuest {
 // ----------------------------------------
 // ENUMS (Tipos customizados)
 // ----------------------------------------
+
+// --- ADICIONE ESTE ENUM ---
+enum CharacterClass {
+  BRUTE     // Focado em Força (Strength)
+  STALKER   // Focado em Destreza (Dexterity)
+  ADEPT     // Focado em Inteligência (Intelligence)
+}
 
 enum CharacterStatus {
   LOCKED    // O estado "Maldição" inicial

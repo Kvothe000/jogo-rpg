@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "Character" ALTER COLUMN "strength" SET DEFAULT 10,
+ALTER COLUMN "dexterity" SET DEFAULT 10,
+ALTER COLUMN "intelligence" SET DEFAULT 10,
+ALTER COLUMN "constitution" SET DEFAULT 10;

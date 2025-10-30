@@ -11,6 +11,7 @@ import {
   HttpStatus,
   NotFoundException,
   ConflictException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import type { UserPayload } from 'src/auth/types/user-payload.type';
@@ -27,15 +28,16 @@ import {
 } from 'src/game/types/socket-with-auth.type';
 import { CharacterStatsService } from 'src/character-stats/character-stats.service';
 import { SkillService } from 'src/skill/skill.service';
-import { Prisma, Skill } from '@prisma/client';
+import { Prisma, Skill, CharacterClass } from '@prisma/client';
 import { JsonValue } from '@prisma/client/runtime/library';
 import * as crypto from 'crypto';
+import { EcoService } from 'src/eco/eco.service';
 
 // --- Definição dos tipos de efeito (JSON) ---
 interface EffectBase {
   type: string;
   chance?: number;
-  target?: 'self' | 'target'; // Adicionar alvo opcional
+  target?: 'self' | 'target';
 }
 interface DamageEffect extends EffectBase {
   type: 'damage';
@@ -128,6 +130,7 @@ export class BattleService {
     private eventEmitter: EventEmitter2,
     private characterStatsService: CharacterStatsService,
     private skillService: SkillService,
+    private ecoService: EcoService,
   ) {}
 
   // --- FUNÇÃO HELPER PARA CALCULAR STATS MODIFICADOS ---
@@ -434,8 +437,8 @@ export class BattleService {
           const attackResult = this.calculateDamage(
             monsterStats,
             playerStats,
-            undefined, // Resistências do jogador (TODO)
-            [], // Tipos do jogador (TODO)
+            undefined,
+            [],
             monsterLevel,
             damageEffect.element ?? 'physical',
             damageEffect.scaleStat,
@@ -560,6 +563,7 @@ export class BattleService {
     const newCombat: CombatInstance = {
       id: player.character.id,
       playerId: player.character.id,
+      playerClass: player.character.class,
       playerHp: player.character.hp,
       playerMaxHp: player.character.maxHp,
       monsterTemplate: monsterTemplate,
@@ -667,32 +671,27 @@ export class BattleService {
   private addEffectToCombatant(
     combat: CombatInstance,
     targetIsPlayer: boolean,
-    effectToAdd: ActiveEffect, // Usa o tipo importado de combat.type.ts
+    effectToAdd: ActiveEffect,
   ): void {
     const targetEffects = targetIsPlayer
       ? combat.playerEffects
       : combat.monsterEffects;
 
-    // --- VALIDAÇÃO REVISADA COM SWITCH ---
+    // Validação de tipo
     switch (effectToAdd.type) {
       case 'status':
       case 'buff':
       case 'debuff':
       case 'dot':
       case 'hot':
-        // Tipo é válido, pode prosseguir
-        break; // Sai do switch e continua a função
+        break;
       default:
-        // Tipo inválido
         console.error(
           // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
           `[BattleService] Tentativa de adicionar efeito com tipo inválido: ${effectToAdd.type}`,
         );
-        // Opcional: Ajuda TypeScript a garantir que todos os casos foram tratados
-        // const _exhaustiveCheck: never = effectToAdd.type;
-        return; // Sai da função se o tipo for inválido
+        return;
     }
-    // --- FIM DA VALIDAÇÃO REVISADA ---
 
     // Restante da função (lógica para substituir/adicionar efeito)
     const existingEffectIndex = targetEffects.findIndex(
@@ -744,7 +743,7 @@ export class BattleService {
       // CORREÇÃO: Extrair .totalStats e .character
       const { totalStats: playerTotalStats, character: playerBaseCharacter } =
         await this.characterStatsService.calculateTotalStats(playerId);
-      const playerLevel = playerBaseCharacter.level ?? 1; // Usar o personagem já buscado
+      const playerLevel = playerBaseCharacter.level ?? 1;
 
       const monsterStats = combat.monsterTemplate.stats as any;
       const monsterBaseStats: any = {
@@ -767,9 +766,8 @@ export class BattleService {
       const monsterTypes = combat.monsterTemplate.types ?? [];
 
       // Calcular stats modificados
-      // CORREÇÃO: Passar os stats corretos
       const playerModifiedStats = this.getModifiedStats(
-        playerTotalStats, // <--- Passar os stats TOTAIS aqui
+        playerTotalStats,
         combat.playerEffects,
       );
       const monsterModifiedStats = this.getModifiedStats(
@@ -784,6 +782,23 @@ export class BattleService {
       // 1. Dano do Jogador -> Monstro
       log.push(`Você ataca ${combat.monsterName}...`);
       if (this.checkHitChance(playerModifiedStats, monsterModifiedStats, log)) {
+        // --- LÓGICA DE CLASSE PARA ATAQUE BÁSICO ---
+        let scaleStat: 'strength' | 'dexterity' | 'intelligence' | undefined =
+          undefined;
+
+        switch (combat.playerClass) {
+          case CharacterClass.BRUTE:
+            scaleStat = 'strength';
+            break;
+          case CharacterClass.STALKER:
+            scaleStat = 'dexterity';
+            break;
+          case CharacterClass.ADEPT:
+            scaleStat = 'intelligence';
+            break;
+        }
+        // --- FIM DA LÓGICA DE CLASSE ---
+
         const attackResult = this.calculateDamage(
           playerModifiedStats,
           monsterModifiedStats,
@@ -791,7 +806,7 @@ export class BattleService {
           monsterTypes,
           playerLevel,
           'physical',
-          undefined,
+          scaleStat,
           0,
           0,
           [],
@@ -994,10 +1009,9 @@ export class BattleService {
       }
 
       // --- STATS ---
-      // CORREÇÃO: Extrair .totalStats e .character
       const { totalStats: playerTotalStats, character: playerBaseCharacter } =
         await this.characterStatsService.calculateTotalStats(playerId);
-      const playerLevel = characterData.level ?? 1; // Já tínhamos buscado
+      const playerLevel = characterData.level ?? 1;
 
       const monsterStats = combat.monsterTemplate.stats as any;
       const monsterBaseStats: any = {
@@ -1019,9 +1033,8 @@ export class BattleService {
         ?.resistances;
 
       // Calcular stats modificados
-      // CORREÇÃO: Passar os stats corretos
       const playerModifiedStats = this.getModifiedStats(
-        playerTotalStats, // <--- Passar os stats TOTAIS aqui
+        playerTotalStats,
         combat.playerEffects,
       );
       const monsterModifiedStats = this.getModifiedStats(
@@ -1146,7 +1159,6 @@ export class BattleService {
             }
             break;
           }
-          // ... (outros casos de efeito permanecem iguais) ...
           default:
             log.push(`Efeito desconhecido: ${(effect as EffectBase).type}`);
         }
@@ -1286,10 +1298,16 @@ export class BattleService {
       include: { inventory: { include: { item: true } } },
     });
     if (!char) {
-      console.log(`[BattleService] Personagem não encontrado: ${playerId}`);
-      return;
+      console.error(
+        `[BattleService] Personagem não encontrado: ${playerId} em handleCombatWin`,
+      );
+      throw new InternalServerErrorException(
+        'Personagem não encontrado após vitória.',
+      );
     }
 
+    const monsterTemplate = combat.monsterTemplate;
+    const monsterRank = monsterTemplate.rank ?? 'E';
     const monsterStats = combat.monsterTemplate.stats as any;
     const xpGanho = monsterStats.xp ?? 50;
     const goldGanho = Math.floor(
@@ -1325,6 +1343,36 @@ export class BattleService {
     }
     console.log(`[BattleService] Itens dropados: ${droppedItems.length}`);
 
+    // --- LÓGICA DE DROP DE ECO ---
+    const ECO_DROP_CHANCE = 0.1;
+    let grantedKeywordName: string | null = null;
+
+    if (Math.random() < ECO_DROP_CHANCE) {
+      console.log(
+        `[BattleService] Tentando dropar Eco de Rank ${monsterRank} para ${playerId}`,
+      );
+      const randomKeywordName =
+        await this.ecoService.getRandomKeywordByRank(monsterRank);
+
+      if (randomKeywordName) {
+        const granted = await this.ecoService.grantKeywordToCharacter(
+          playerId,
+          randomKeywordName,
+        );
+        if (granted) {
+          grantedKeywordName = randomKeywordName;
+          log.push(
+            `\n✨ Você sente uma nova ressonância... Absorveu o Eco: ${grantedKeywordName}!`,
+          );
+        }
+      } else {
+        console.log(
+          `[BattleService] Nenhum Eco encontrado para Rank ${monsterRank}.`,
+        );
+      }
+    }
+    // --- FIM DA LÓGICA DE DROP DE ECO ---
+
     // --- TRANSAÇÃO PARA ATUALIZAR TUDO ---
     let transactionSuccess = false;
     let updatedChar: any = null;
@@ -1338,16 +1386,13 @@ export class BattleService {
 
         if (novoXp >= BigInt(xpParaProximoLevel)) {
           novoLevel = char.level + 1;
-          const PONTOS_POR_LEVEL = 3; // Definimos quantos pontos o jogador ganha
+          const PONTOS_POR_LEVEL = 3;
 
-          // Não aumentamos mais MaxHp/MaxEco automaticamente.
-          // Apenas curamos o jogador para o seu máximo ATUAL.
           Object.assign(levelUpData, {
             level: novoLevel,
-            hp: char.maxHp, // Cura total
-            eco: char.maxEco, // Restaura total
+            hp: char.maxHp,
+            eco: char.maxEco,
             attributePoints: {
-              // Usamos o 'increment' do Prisma para adicionar aos pontos existentes
               increment: PONTOS_POR_LEVEL,
             },
           });
@@ -1365,7 +1410,7 @@ export class BattleService {
           data: {
             xp: novoXp,
             gold: char.gold + goldGanho,
-            ...levelUpData, // Isso aplicará o level, hp, eco, e o 'increment' de attributePoints
+            ...levelUpData,
           },
         });
         console.log(

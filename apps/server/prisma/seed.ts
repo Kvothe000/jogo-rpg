@@ -21,6 +21,7 @@ const KW_SOMBRA = 'kw_sombra';
 const KW_FOGO = 'kw_fogo';
 const KW_AGUA = 'kw_agua';
 const KW_LUZ = 'kw_luz';
+const KW_CURA = 'kwcura';
 // --- FIM DOS IDs ---
 // --- IDs PARA SKILLS ---
 const SKILL_LAMINA_INCANDESCENTE = 'sk_lamina_incandescente';
@@ -107,6 +108,7 @@ async function main() {
       id: KW_LAMINA,
       name: 'Lâmina',
       description: 'O conceito de cortar, perfurar e dividir.',
+      rank: 'E',
     },
   });
 
@@ -117,6 +119,7 @@ async function main() {
       id: KW_SOMBRA,
       name: 'Sombra',
       description: 'O conceito de ocultação, escuridão e ilusão.',
+      rank: 'D',
     },
   });
 
@@ -127,6 +130,7 @@ async function main() {
       id: KW_FOGO,
       name: 'Fogo',
       description: 'O conceito de calor, combustão e destruição.',
+      rank: 'E',
     },
   });
 
@@ -137,6 +141,7 @@ async function main() {
       id: KW_AGUA,
       name: 'Água',
       description: 'O conceito de fluidez, cura e pressão.',
+      rank: 'E',
     },
   });
 
@@ -147,6 +152,17 @@ async function main() {
       id: KW_LUZ,
       name: 'Luz',
       description: 'O conceito de iluminação, pureza e energia radiante.',
+      rank: 'D',
+    },
+  });
+  await prisma.powerKeyword.upsert({
+    where: { id: KW_CURA },
+    update: {},
+    create: {
+      id: KW_CURA,
+      name: 'CURA',
+      description: 'Eco da restauração. Associado à recuperação de vitalidade.',
+      rank: 'D', // Vamos fazer a Cura ser um pouco mais rara
     },
   });
   console.log('Keywords iniciais criadas.');

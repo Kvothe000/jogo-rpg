@@ -370,3 +370,139 @@ a:hover::after {
   pointer-events: none;
   z-index: 2;
 }
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.95); /* Assume que o modal usa translate -50%, -50% */
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+/* Classe genérica para aplicar a animação */
+.modal-enter-animation {
+  animation: modalFadeIn 0.3s ease-out forwards;
+}
+
+/* Adaptação para modais que não usam translate -50%, -50% (ex: Skills Manager na coluna da direita) */
+@keyframes modalSimpleFadeIn {
+   from {
+     opacity: 0;
+   }
+   to {
+     opacity: 1;
+   }
+}
+.simple-fade-in {
+  animation: modalSimpleFadeIn 0.3s ease-out forwards;
+}
+/* --- Barra de Ações Principal --- */
+.game-action-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  z-index: 80; /* Abaixo do chat (90) e modais (1000) */
+  opacity: 0.7; /* Semi-transparente por defeito */
+  transition: opacity 0.3s ease;
+  
+  display: flex;
+  justify-content: center; /* Centraliza os botões */
+  align-items: center;
+  padding: 10px 15px;
+  background-color: var(--color-renegade-bg-transparent);
+  border-top: 1px solid var(--color-border);
+  box-shadow: 0 -2px 10px var(--color-renegade-glow);
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.game-action-bar:hover {
+  opacity: 1; /* Opacidade total no hover */
+}
+
+.action-bar-button {
+  padding: 10px 15px;
+  font-family: var(--font-main);
+  cursor: pointer;
+  border: 1px solid var(--color-border);
+  background-color: rgba(0,0,0,0.3);
+  color: var(--color-renegade-text);
+  border-radius: 4px;
+  font-size: 0.9em;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.3s ease;
+  position: relative;
+  min-width: 120px;
+  justify-content: center;
+}
+
+.action-bar-button:hover {
+  background-color: rgba(0, 50, 50, 0.6);
+  border-color: var(--color-renegade-cyan);
+  box-shadow: 0 0 8px var(--color-renegade-glow);
+}
+
+.action-button-notify {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background: var(--color-success);
+  color: white;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  font-size: 0.6em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+/* --- Animação de Transição de UI (Prólogo) --- */
+.ui-glitch-transition {
+  /* Força a animação a ficar por cima de tudo */
+  z-index: 9998 !important; 
+  animation: ui-glitch-effect 1.2s ease-out forwards;
+}
+
+/* Animação de Glitch de Tela Cheia */
+@keyframes ui-glitch-effect {
+  0% {
+    opacity: 1;
+    filter: brightness(1);
+    box-shadow: 0 0 5px var(--color-citadel-glow), inset 0 0 5px var(--color-citadel-glow);
+  }
+  20% {
+    opacity: 0.8;
+    filter: brightness(3) contrast(3);
+    transform: skewX(10deg) translateX(20px);
+    box-shadow: 0 0 20px var(--color-renegade-magenta), inset 0 0 20px var(--color-renegade-magenta);
+  }
+  40% {
+    opacity: 1;
+    filter: brightness(0.5);
+    transform: skewX(-10deg) translateX(-20px);
+    box-shadow: 0 0 10px var(--color-renegade-cyan), inset 0 0 10px var(--color-renegade-cyan);
+  }
+  60% {
+    opacity: 0.6;
+    filter: brightness(5) saturate(5);
+    transform: scale(1.05);
+    box-shadow: 0 0 30px var(--color-renegade-glow), inset 0 0 30px var(--color-renegade-glow);
+  }
+  80% {
+    opacity: 1;
+    transform: scale(1);
+    filter: brightness(1.5);
+    box-shadow: none;
+  }
+  100% {
+    opacity: 1;
+    filter: brightness(1);
+    box-shadow: none;
+  }
+}

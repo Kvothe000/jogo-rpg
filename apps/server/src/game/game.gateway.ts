@@ -941,6 +941,47 @@ export class GameGateway
     }
   }
 
+  // Listener para quando uma Keyword é ganha
+  @OnEvent('character.keyword.gained')
+  async handleKeywordGained(payload: {
+    characterId: string;
+    keywordName: string;
+    keywordDescription: string;
+  }) {
+    const { characterId, keywordName, keywordDescription } = payload;
+    console.log(
+      `[GameGateway] Evento character.keyword.gained RECEBIDO para ${characterId}: ${keywordName}`,
+    );
+
+    const clientSocket = this.getClientSocket(characterId);
+    if (clientSocket) {
+      // 1. Notificar o jogador sobre o novo Eco
+      clientSocket.emit(
+        'serverMessage',
+        `✨ Eco Absorvido: ${keywordName} - ${keywordDescription}`,
+      );
+
+      // 2. Pedir ao cliente para atualizar as Keywords e Skills disponíveis
+      // (Reutilizamos os handlers existentes que buscam e emitem os dados)
+      try {
+        await this.handleRequestKeywords(clientSocket);
+        await this.handleRequestAvailableSkills(clientSocket);
+        console.log(
+          `[GameGateway] Atualizações de Keywords/Skills emitidas para ${characterId} após ganhar ${keywordName}.`,
+        );
+      } catch (error) {
+        console.error(
+          `[GameGateway] Erro ao emitir atualizações pós-keyword para ${characterId}:`,
+          error,
+        );
+      }
+    } else {
+      console.warn(
+        `[GameGateway] Socket não encontrado para ${characterId} em keyword.gained`,
+      );
+    }
+  }
+
   getClientSocket(playerId: string): SocketWithAuth | undefined {
     const sockets = Array.from(
       this.server.sockets.sockets.values(),
