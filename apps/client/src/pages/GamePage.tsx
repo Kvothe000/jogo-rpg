@@ -8,8 +8,8 @@ import { AvailableSkillsDisplay } from '../components/AvailableSkillsDisplay';
 import { LearnedSkillsDisplay } from '../components/LearnedSkillsDisplay';
 import { EffectsDisplay } from '../components/EffectsDisplay';
 import { CharacterStatsDisplay } from '../components/CharacterStatsDisplay';
-import { PrologueDisplay } from '../components/PrologueDisplay'; // Importar Prólogo
-import toast from 'react-hot-toast'; // Removido 'Toaster'
+import { PrologueDisplay } from '../components/PrologueDisplay';
+import toast from 'react-hot-toast'; // CORRIGIDO: Removido 'Toaster'
 import type {
     CombatUpdatePayload,
     LootDropPayload,
@@ -18,10 +18,10 @@ import type {
     KeywordData,
     AvailableSkillData,
     LearnedSkillData,
-    PrologueUpdatePayload // Importar tipo do Prólogo
+    PrologueUpdatePayload
 } from '../../../server/src/game/types/socket-with-auth.type';
 
-// Tipos (mantidos)
+// Tipos
 interface RoomData {
     name: string;
     description: string;
@@ -42,7 +42,7 @@ interface CombatStartedPayload {
     message: string;
 }
 
-// Estilos Corrigidos
+// Estilos
 const styles: Record<string, React.CSSProperties> = {
     containerStyle: {
         display: 'flex',
@@ -61,12 +61,12 @@ const styles: Record<string, React.CSSProperties> = {
         borderBottom: '1px solid var(--color-border)',
         color: 'var(--color-renegade-text)',
         fontFamily: 'var(--font-main)',
-        position: 'sticky', // Fixo no topo
+        position: 'sticky',
         top: 0,
         zIndex: 90,
         boxShadow: '0 2px 10px var(--color-renegade-glow)',
         gap: '20px',
-        height: '60px', // Altura fixa
+        height: '60px',
     },
     headerSection: {
         display: 'flex',
@@ -287,6 +287,16 @@ const styles: Record<string, React.CSSProperties> = {
          paddingTop: '15px',
          borderTop: '1px solid var(--color-border)',
     },
+    // Estilo para a Tela de Carregamento
+    loadingContainer: { 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100%', // Ocupa todo o textContentContainer
+        fontFamily: 'var(--font-display)', 
+        color: 'var(--color-renegade-cyan)',
+        textShadow: '0 0 10px var(--color-renegade-glow)'
+    }
 };
 
 export function GamePage() {
@@ -598,26 +608,21 @@ export function GamePage() {
             </div>
         );
     
-        if (!room) {
-            // Tela de Carregamento
-            return (
-                <div className="digital-distortion" style={{
-                    display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh',
-                    fontFamily: 'var(--font-display)', color: 'var(--color-renegade-cyan)',
-                    textShadow: '0 0 10px var(--color-renegade-glow)'
-                }}>
-                    <div className="glitch-text" data-text="CARREGANDO...">
-                        CARREGANDO INFORMAÇÕES DA SALA...
-                    </div>
-                </div>
-            );
-        }
-    
+        // Valores atuais para as barras de status
         const currentHp = user?.character?.hp ?? 0;
         const maxHp = user?.character?.maxHp ?? 100;
         const currentEco = user?.character?.eco ?? 0;
         const maxEco = user?.character?.maxEco ?? 50;
     
+        // CORREÇÃO: Mover a tela de carregamento para dentro da lógica de renderização
+        const renderLoadingScreen = () => (
+            <div style={styles.loadingContainer}>
+                <div className="glitch-text" data-text="CARREGANDO...">
+                    CARREGANDO...
+                </div>
+            </div>
+        );
+
         return (
             <div 
                 className={`
@@ -628,7 +633,9 @@ export function GamePage() {
                 `} 
                 style={styles.containerStyle}
             >
-                {/* Header (Recolocado e funcional) */}
+                {/* CORRIGIDO (BUG 1): Toaster removido */}
+    
+                {/* Header (Renderiza SE TIVER DADOS DO JOGADOR) */}
                 {user?.character && (
                     <header style={styles.header}>
                         <div style={styles.headerSection}>
@@ -693,22 +700,25 @@ export function GamePage() {
                         <div className="scanlines" style={{ zIndex: 1, position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}></div>
                     </div>
                     <div style={styles.textContentContainer}>
-                        {/* CORREÇÃO (Bug TS2322): Passar props com spread */}
+                        {/* CORREÇÃO DA LÓGICA DE RENDERIZAÇÃO:
+                          Verifica o prólogo primeiro, depois a sala, e senão, loading.
+                        */}
                         {inPrologue && prologueData ? (
-                            <PrologueDisplay {...prologueData} />
-                        ) : (
-                            // Jogo Normal (Layout Corrigido)
+                             // 1. MODO PRÓLOGO
+                             <PrologueDisplay {...prologueData} /> // CORRIGIDO (TS2322)
+                        ) : !inPrologue && room ? (
+                             // 2. MODO JOGO NORMAL
                             <>
                                 {!combatData?.isActive ? (
                                     // --- MODO EXPLORAÇÃO ---
                                     <>
-                                        <h3 style={styles.roomTitle}>{room?.name}</h3>
+                                        <h3 style={styles.roomTitle}>{room.name}</h3>
                                         <p 
                                             style={styles.roomDescription}
-                                            dangerouslySetInnerHTML={{ __html: room?.description || '' }}
+                                            dangerouslySetInnerHTML={{ __html: room.description || '' }}
                                         />
                                         
-                                        {/* GRELHA CORRIGIDA */}
+                                        {/* GRELHA CORRIGIDA (BUG 2 Layout Torto) */}
                                         <div style={styles.roomInfoGrid}>
                                             {room.npcs && room.npcs.length > 0 && (
                                                 <div style={styles.roomInfoSection}>
@@ -769,35 +779,103 @@ export function GamePage() {
                                 ) : (
                                     // --- MODO COMBATE ---
                                     <div style={styles.combatDisplay}>
-                                        {/* ... (Todo o JSX do modo combate) ... */}
                                         <h2 className="glitch-text" data-text={`LUTANDO CONTRA: ${combatData.monsterName}`} style={{...styles.combatTitle}}>
                                             Lutando contra: {combatData.monsterName}
                                         </h2>
+                                        
                                         <div style={styles.combatStatusBars}>
-                                            {/* ... (Barra HP Monstro) ... */}
+                                            <div style={{ marginBottom: '10px' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8em', marginBottom: '2px' }}>
+                                                    <span>Monstro HP:</span>
+                                                    <span>{combatData.monsterHp}/{combatData.monsterMaxHp}</span>
+                                                </div>
+                                                <div className="status-bar" style={{ height: '12px' }}>
+                                                    <div 
+                                                        className="hp-bar enemy" 
+                                                        style={{ 
+                                                            width: `${(combatData.monsterHp / combatData.monsterMaxHp) * 100}%`,
+                                                            height: '100%',
+                                                            backgroundColor: 'var(--color-danger)',
+                                                            boxShadow: '0 0 8px var(--color-danger)',
+                                                        }}
+                                                    />
+                                                </div>
+                                            </div>
                                         </div>
                                         <EffectsDisplay 
                                             effects={combatData.monsterEffects} 
                                             targetName={combatData.monsterName} 
                                         />
+            
                                         <div style={styles.combatLog}>
                                             {combatData.log.map((line: string, i: number) => (
                                                 <div key={i} style={styles.combatLogEntry} dangerouslySetInnerHTML={{ __html: line }} />
                                             ))}
                                         </div>
+            
                                         <EffectsDisplay 
                                             effects={combatData.playerEffects} 
                                             targetName="Você" 
                                         />
+                                        
                                         <p style={{ marginTop: '10px', fontFamily: 'var(--font-display)', fontSize: '0.9em' }}>
-                                            {/* ... (Lógica do Turno) ... */}
+                                            Turno: {combatData.isPlayerTurn ?
+                                                <span style={{ color: 'var(--color-renegade-cyan)', textShadow: '0 0 8px var(--color-renegade-cyan)', animation: 'glitch-pulse 1s infinite' }}>
+                                                    SEU TURNO
+                                                </span> :
+                                                <span style={{ color: 'var(--color-warning)', textShadow: '0 0 8px var(--color-warning)' }}>
+                                                    Monstro
+                                                </span>
+                                            }
                                         </p>
+            
                                         <div style={styles.combatActions}>
-                                            {/* ... (Botões de Ataque, Skills, Bolsa) ... */}
+                                            <button 
+                                                onClick={handleAttack} 
+                                                disabled={!combatData.isPlayerTurn}
+                                                className={combatData.isPlayerTurn ? 'renegade' : ''}
+                                                style={{ ...styles.actionButton, padding: '10px' }}
+                                            >
+                                                ⚡ Ataque Básico
+                                            </button>
+                                            {learnedSkills.map((skill) => {
+                                                const hasEnoughEco = currentEco >= skill.ecoCost;
+                                                const canUse = combatData.isPlayerTurn && hasEnoughEco;
+                                                return (
+                                                    <button
+                                                        key={skill.id}
+                                                        onClick={() => handleUseSkill(skill.id)}
+                                                        disabled={!canUse}
+                                                        className={canUse ? 'renegade' : ''}
+                                                        title={`${skill.name} - Custo: ${skill.ecoCost} Eco\n${skill.description}`}
+                                                        style={{
+                                                            ...styles.actionButton,
+                                                            padding: '10px',
+                                                            opacity: canUse ? 1 : 0.6,
+                                                            background: canUse 
+                                                                ? 'linear-gradient(135deg, var(--color-renegade-purple) 0%, var(--color-renegade-magenta) 100%)' 
+                                                                : 'var(--color-citadel-secondary)',
+                                                        }}
+                                                    >
+                                                        {skill.name} ({skill.ecoCost}⚡)
+                                                    </button>
+                                                );
+                                            })}
+                                            <button 
+                                                onClick={handleRequestInventory} 
+                                                disabled={!combatData.isPlayerTurn}
+                                                className={combatData.isPlayerTurn ? 'citadel' : ''}
+                                                style={{ ...styles.actionButton, padding: '10px', opacity: combatData.isPlayerTurn ? 1 : 0.6 }}
+                                            >
+                                                🎒 Bolsa
+                                            </button>
                                         </div>
                                     </div>
                                 )}
                             </>
+                        ) : (
+                             // 3. MODO CARREGAMENTO (Default)
+                             renderLoadingScreen()
                         )}
                     </div>
                 </main>
