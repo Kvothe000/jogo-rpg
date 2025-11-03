@@ -695,7 +695,7 @@ export function GamePage() {
                     <div style={styles.textContentContainer}>
                         {/* CORREÇÃO (Bug TS2322): Passar props com spread */}
                         {inPrologue && prologueData ? (
-                             <PrologueDisplay {...prologueData} />
+                            <PrologueDisplay {...prologueData} />
                         ) : (
                             // Jogo Normal (Layout Corrigido)
                             <>

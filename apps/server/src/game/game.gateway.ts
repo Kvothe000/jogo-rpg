@@ -699,7 +699,9 @@ export class GameGateway
     const state = character.prologueState;
     console.log(`[Prologue] Disparando evento para estado: ${state}`);
 
+    // CORREÇÃO: Lidar com 'NOT_STARTED' como se fosse 'SCENE_1_START'
     switch (state) {
+      case 'NOT_STARTED':
       case 'SCENE_1_START':
         client.emit('prologueUpdate', {
           step: 'SCENE_1_START',
@@ -730,8 +732,9 @@ export class GameGateway
       `[Prologue] Interação recebida: ${payload.targetId} no estado ${state}`,
     );
 
+    // CORREÇÃO: Aceitar 'NOT_STARTED' ou 'SCENE_1_START'
     if (
-      state === 'SCENE_1_START' &&
+      (state === 'SCENE_1_START' || state === 'NOT_STARTED') &&
       payload.targetId === 'terminal_primario_01'
     ) {
       const newState = 'SCENE_1_GLITCH';
