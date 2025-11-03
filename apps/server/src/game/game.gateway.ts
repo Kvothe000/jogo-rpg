@@ -12,10 +12,10 @@ import {
 } from '@nestjs/websockets';
 import { Server } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
+import { Prisma, Skill } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import type { SocketWithAuth } from './types/socket-with-auth.type';
 import type { TokenPayload } from 'src/auth/types/user-payload.type';
-import type { GameMap } from '@prisma/client';
 import { BattleService } from 'src/battle/battle.service';
 import { OnEvent } from '@nestjs/event-emitter';
 import {
@@ -31,6 +31,7 @@ import {
   HttpException,
   ConflictException,
   NotFoundException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import {
   CharacterStatsService,
@@ -38,13 +39,12 @@ import {
 } from 'src/character-stats/character-stats.service';
 import { EcoService } from 'src/eco/eco.service';
 import { SkillService } from 'src/skill/skill.service';
-import { Skill } from '@prisma/client';
 import { OnModuleDestroy } from '@nestjs/common';
 
 // --- Constantes para Regeneração ---
-const REGEN_INTERVAL_MS = 10000; // Verificar a cada 10 segundos
-const HP_REGEN_PER_INTERVAL = 5; // Regenerar 5 HP por intervalo
-const ECO_REGEN_PER_INTERVAL = 3; // Regenerar 3 Eco por intervalo
+const REGEN_INTERVAL_MS = 10000;
+const HP_REGEN_PER_INTERVAL = 5;
+const ECO_REGEN_PER_INTERVAL = 3;
 
 @WebSocketGateway({
   cors: {
@@ -164,10 +164,6 @@ export class GameGateway
                   eco: updatedCharacter.eco,
                   maxEco: updatedCharacter.maxEco,
                 });
-
-                console.log(
-                  `[Regen] ${updatedCharacter.name}: HP ${updatedCharacter.hp}/${updatedCharacter.maxHp}, Eco ${updatedCharacter.eco}/${updatedCharacter.maxEco}`,
-                );
               } catch (updateError) {
                 console.error(
                   `[Regen] Erro ao atualizar personagem ${character.id}:`,
@@ -214,14 +210,11 @@ export class GameGateway
       );
 
       // --- LÓGICA DO PRÓLOGO ---
-      // Envia o estado atual do prólogo ANTES de enviar os dados da sala
-      // para que a UI do cliente saiba se deve mostrar o prólogo ou o jogo normal
-      this.triggerPrologueEvent(client); // Removido await
+      this.triggerPrologueEvent(client);
       // --- FIM DA LÓGICA DO PRÓLOGO ---
 
       await this.sendRoomDataToClient(client);
 
-      // Reiniciar loop se estava parado e há clientes
       if (!this.regenInterval) {
         const socketsInfo = await this.server.fetchSockets();
         if (socketsInfo.length > 0) {
@@ -248,7 +241,6 @@ export class GameGateway
       console.log('🔌 Cliente (não autenticado) Desconectado');
     }
 
-    // A lógica async fica dentro do setTimeout
     setTimeout(async () => {
       try {
         const socketsInfo = await this.server.fetchSockets();
@@ -268,9 +260,7 @@ export class GameGateway
 
   @SubscribeMessage('playerLook')
   async handlePlayerLook(@ConnectedSocket() client: SocketWithAuth) {
-    // Envia o estado do prólogo primeiro
-    this.triggerPrologueEvent(client); // Removido await
-
+    this.triggerPrologueEvent(client);
     await this.sendRoomDataToClient(client);
   }
 
@@ -284,6 +274,13 @@ export class GameGateway
       client.emit('serverMessage', 'Erro: Personagem não encontrado.');
       return;
     }
+
+    // --- BLOQUEAR MOVIMENTO DURANTE O PRÓLOGO ---
+    if (user.character.prologueState !== 'COMPLETED') {
+      client.emit('serverMessage', 'Você não pode se mover agora.');
+      return;
+    }
+    // --- FIM DO BLOQUEIO ---
 
     const mapId = user.character.mapId;
     const currentRoom = await this.prisma.gameMap.findUnique({
@@ -373,10 +370,6 @@ export class GameGateway
       return;
     }
 
-    console.log(
-      `[GameGateway] Recebido equipItem: char=${characterId}, slot=${slotIdToEquip}`,
-    );
-
     try {
       await this.inventoryService.equipItem(characterId, slotIdToEquip);
 
@@ -385,10 +378,6 @@ export class GameGateway
       client.emit('updateInventory', { slots: updatedInventory });
       client.emit('serverMessage', 'Item equipado!');
     } catch (error) {
-      console.error(
-        `[GameGateway] Erro ao equipar item (slot ${slotIdToEquip}):`,
-        error,
-      );
       const message =
         error instanceof HttpException
           ? error.message
@@ -413,10 +402,6 @@ export class GameGateway
       return;
     }
 
-    console.log(
-      `[GameGateway] Recebido unequipItem: char=${characterId}, slot=${slotIdToUnequip}`,
-    );
-
     try {
       await this.inventoryService.unequipItem(characterId, slotIdToUnequip);
 
@@ -425,10 +410,6 @@ export class GameGateway
       client.emit('updateInventory', { slots: updatedInventory });
       client.emit('serverMessage', 'Item desequipado!');
     } catch (error) {
-      console.error(
-        `[GameGateway] Erro ao desequipar item (slot ${slotIdToUnequip}):`,
-        error,
-      );
       const message =
         error instanceof HttpException
           ? error.message
@@ -450,30 +431,18 @@ export class GameGateway
       return;
     }
 
-    console.log(
-      `[GameGateway] Recebido useItem: char=${characterId}, slot=${slotIdToUse}`,
-    );
-
     try {
       const result = await this.inventoryService.useItem(
         characterId,
         slotIdToUse,
       );
 
-      // Enviar mensagem de sucesso
       client.emit('serverMessage', result.message);
 
-      // Atualizar inventário (item foi consumido)
       const updatedInventory =
         await this.inventoryService.getInventory(characterId);
       client.emit('updateInventory', { slots: updatedInventory });
-
-      // Os vitais serão atualizados pelo listener de evento 'character.vitals.updated'
     } catch (error) {
-      console.error(
-        `[GameGateway] Erro ao usar item (slot ${slotIdToUse}) para ${characterId}:`,
-        error,
-      );
       const message =
         error instanceof HttpException
           ? error.message
@@ -482,7 +451,6 @@ export class GameGateway
     }
   }
 
-  // --- Handler para gastar pontos ---
   @SubscribeMessage('spendAttributePoint')
   async handleSpendAttributePoint(
     @ConnectedSocket() client: SocketWithAuth,
@@ -496,30 +464,17 @@ export class GameGateway
       return;
     }
 
-    console.log(
-      `[GameGateway] Recebido spendAttributePoint: char=${characterId}, attr=${attribute}`,
-    );
-
     try {
-      // O serviço lida com a lógica, transação e emissão de eventos
       await this.characterStatsService.spendAttributePoint(
         characterId,
         attribute,
       );
 
-      // Enviar mensagem de sucesso
       client.emit(
         'serverMessage',
         `Você aumentou ${this.translateAttribute(attribute)}!`,
       );
-
-      // Os listeners 'character.vitals.updated' e 'character.baseStats.updated'
-      // cuidarão de enviar os novos stats para o cliente.
     } catch (error) {
-      console.error(
-        `[GameGateway] Erro ao gastar ponto (${attribute}) para ${characterId}:`,
-        error,
-      );
       const message =
         error instanceof HttpException
           ? error.message
@@ -528,7 +483,6 @@ export class GameGateway
     }
   }
 
-  // Função auxiliar para traduzir o nome do atributo
   private translateAttribute(attribute: CharacterAttribute): string {
     switch (attribute) {
       case 'strength':
@@ -581,26 +535,14 @@ export class GameGateway
       return;
     }
 
-    console.log(`[GameGateway] combatAttack recebido de player ${playerId}`);
     try {
       const combatUpdate =
         await this.battleService.processPlayerAttack(playerId);
 
       if (combatUpdate) {
-        console.log(
-          `[GameGateway] Enviando combatUpdate (attack) para player ${playerId}`,
-        );
         client.emit('combatUpdate', combatUpdate);
-      } else {
-        console.log(
-          `[GameGateway] Nenhum combatUpdate (attack) para player ${playerId} (combate terminou?)`,
-        );
       }
     } catch (error) {
-      console.error(
-        `[GameGateway] Erro ao processar combatAttack para ${playerId}:`,
-        error,
-      );
       const message =
         error instanceof HttpException
           ? error.message
@@ -622,9 +564,6 @@ export class GameGateway
       return;
     }
 
-    console.log(
-      `[GameGateway] combatUseSkill recebido: player=${playerId}, skill=${skillIdToUse}`,
-    );
     try {
       const combatUpdate = await this.battleService.processPlayerSkill(
         playerId,
@@ -632,20 +571,9 @@ export class GameGateway
       );
 
       if (combatUpdate) {
-        console.log(
-          `[GameGateway] Enviando combatUpdate (skill) para player ${playerId}`,
-        );
         client.emit('combatUpdate', combatUpdate);
-      } else {
-        console.log(
-          `[GameGateway] Nenhum combatUpdate (skill) para player ${playerId} (combate terminou?)`,
-        );
       }
     } catch (error) {
-      console.error(
-        `[GameGateway] Erro ao processar combatUseSkill para ${playerId} (skill ${skillIdToUse}):`,
-        error,
-      );
       const message =
         error instanceof HttpException
           ? error.message
@@ -662,15 +590,10 @@ export class GameGateway
       return;
     }
 
-    console.log(`[GameGateway] Recebido requestInventory de ${characterId}`);
-
     const inventorySlots =
       await this.inventoryService.getInventory(characterId);
 
     client.emit('updateInventory', { slots: inventorySlots });
-    console.log(
-      `[GameGateway] Emitido updateInventory para ${characterId} com ${inventorySlots.length} slots.`,
-    );
   }
 
   @SubscribeMessage('requestKeywords')
@@ -678,25 +601,13 @@ export class GameGateway
     const characterId = client.data.user?.character?.id;
     if (!characterId) {
       client.emit('serverMessage', 'Erro: Personagem não encontrado.');
-      console.warn(
-        `[GameGateway] requestKeywords: Character não encontrado para socket ${client.id}`,
-      );
       return;
     }
-
-    console.log(`[GameGateway] Recebido requestKeywords de ${characterId}`);
 
     try {
       const keywords = await this.ecoService.getCharacterKeywords(characterId);
       client.emit('updateKeywords', { keywords: keywords });
-      console.log(
-        `[GameGateway] Emitido updateKeywords para ${characterId} com ${keywords.length} keywords.`,
-      );
     } catch (error) {
-      console.error(
-        `[GameGateway] Erro ao buscar keywords para ${characterId}:`,
-        error,
-      );
       client.emit('serverMessage', 'Erro ao buscar suas Keywords.');
     }
   }
@@ -711,21 +622,11 @@ export class GameGateway
       return;
     }
 
-    console.log(
-      `[GameGateway] Recebido requestAvailableSkills de ${characterId}`,
-    );
     try {
       const availableSkills =
         await this.skillService.getAvailableSkillsForCharacter(characterId);
       client.emit('updateAvailableSkills', { skills: availableSkills });
-      console.log(
-        `[GameGateway] Emitido updateAvailableSkills para ${characterId} com ${availableSkills.length} skills.`,
-      );
     } catch (error) {
-      console.error(
-        `[GameGateway] Erro ao buscar skills disponíveis para ${characterId}:`,
-        error,
-      );
       client.emit('serverMessage', 'Erro ao buscar skills disponíveis.');
     }
   }
@@ -738,21 +639,11 @@ export class GameGateway
       return;
     }
 
-    console.log(
-      `[GameGateway] Recebido requestLearnedSkills de ${characterId}`,
-    );
     try {
       const learnedSkills =
         await this.skillService.getLearnedSkills(characterId);
       client.emit('updateLearnedSkills', { skills: learnedSkills });
-      console.log(
-        `[GameGateway] Emitido updateLearnedSkills para ${characterId} com ${learnedSkills.length} skills.`,
-      );
     } catch (error) {
-      console.error(
-        `[GameGateway] Erro ao buscar skills aprendidas para ${characterId}:`,
-        error,
-      );
       client.emit('serverMessage', 'Erro ao buscar skills aprendidas.');
     }
   }
@@ -773,9 +664,6 @@ export class GameGateway
       return;
     }
 
-    console.log(
-      `[GameGateway] Recebido learnSkill: char=${characterId}, skill=${skillIdToLearn}`,
-    );
     try {
       await this.skillService.learnSkill(characterId, skillIdToLearn);
       client.emit('serverMessage', 'Nova skill aprendida!');
@@ -787,10 +675,6 @@ export class GameGateway
       client.emit('updateAvailableSkills', { skills: availableSkills });
       client.emit('updateLearnedSkills', { skills: learnedSkills });
     } catch (error) {
-      console.error(
-        `[GameGateway] Erro ao aprender skill ${skillIdToLearn} para ${characterId}:`,
-        error,
-      );
       let message = 'Erro desconhecido ao tentar aprender a skill.';
       if (
         error instanceof NotFoundException ||
@@ -806,27 +690,18 @@ export class GameGateway
 
   // --- LÓGICA DO PRÓLOGO (CORRIGIDA) ---
 
-  /**
-   * Verifica o estado atual do prólogo do jogador e envia o evento apropriado.
-   */
   private triggerPrologueEvent(client: SocketWithAuth): void {
-    // Removido async
-    // CORREÇÃO: Verificar 'character' primeiro
     const character = client.data.user?.character;
     if (!character || character.prologueState === 'COMPLETED') {
-      // Prólogo concluído ou personagem não existe, não envia nada
       return;
     }
 
     const state = character.prologueState;
     console.log(`[Prologue] Disparando evento para estado: ${state}`);
 
-    // Controla o fluxo do prólogo
     switch (state) {
       case 'SCENE_1_START':
-        // Cena 1: A Fachada Racha - Tarefa Inicial
         client.emit('prologueUpdate', {
-          // CORREÇÃO: Usar 'step' em vez de 'scene' (TS2345)
           step: 'SCENE_1_START',
           message:
             '>> Tarefa: Otimizar Fluxo de Dados 7-Alfa. Aproxime-se do <span class="highlight-interact">Terminal Primário</span> e inicie a calibração. <<',
@@ -835,28 +710,19 @@ export class GameGateway
         });
         break;
 
-      // (Outros estados do prólogo virão aqui)
-      // case 'SCENE_1_GLITCH': ...
-      // case 'SCENE_2_DETAINED': ...
-
       default:
         console.warn(`[Prologue] Estado do prólogo desconhecido: ${state}`);
     }
   }
 
-  /**
-   * Handler para quando o jogador interage com algo durante o prólogo.
-   */
   @SubscribeMessage('prologueInteract')
   async handlePrologueInteract(
     @ConnectedSocket() client: SocketWithAuth,
     @MessageBody() payload: { targetId?: string },
   ) {
-    // CORREÇÃO: Verificar 'character' primeiro (TS18047)
     const character = client.data.user?.character;
     if (!character || character.prologueState === 'COMPLETED') return;
 
-    // Agora 'character' é seguro para usar
     const state = character.prologueState;
     const characterId = character.id;
 
@@ -864,62 +730,42 @@ export class GameGateway
       `[Prologue] Interação recebida: ${payload.targetId} no estado ${state}`,
     );
 
-    // Lógica da Cena 1
     if (
       state === 'SCENE_1_START' &&
       payload.targetId === 'terminal_primario_01'
     ) {
-      // O jogador interagiu com o terminal correto.
-      // Vamos simular o GLITCH (Cena 1.3)
-
-      // Atualiza o estado do jogador no DB
       const newState = 'SCENE_1_GLITCH';
       await this.prisma.character.update({
         where: { id: characterId },
         data: { prologueState: newState },
       });
 
-      // CORREÇÃO: (TS18047) Atribuir à variável 'character' local, que já foi verificada
       character.prologueState = newState;
 
-      // Envia a atualização do "Glitch" para o cliente
       client.emit('prologueUpdate', {
-        // CORREÇÃO: Usar 'step' em vez de 'scene' (TS2345)
         step: newState,
         message:
           '//- PROJETO RESSONÂNCIA :: ECO DETECTADO :: AMEAÇA NÍVEL S_GMA -//',
         scene: '',
         targetId: '',
       });
-
-      // TODO: Simular a chegada do Supervisor após um delay
     }
-
-    // TODO: Adicionar lógica para outros estados (ex: CENA_2_DETAINED e payload.targetId === 'duto_ventilacao')
   }
 
-  /**
-   * Handler para quando o jogador faz uma escolha de diálogo.
-   */
   @SubscribeMessage('prologueChoice')
   handlePrologueChoice(
     @ConnectedSocket() client: SocketWithAuth,
     @MessageBody() payload: { choiceId: string },
   ) {
-    // CORREÇÃO: Verificar 'character' primeiro (TS18047)
     const character = client.data.user?.character;
     if (!character || character.prologueState === 'COMPLETED') return;
 
-    // Agora 'character' é seguro para usar
     const state = character.prologueState;
     const characterId = character.id;
 
     console.log(
       `[Prologue] Escolha recebida: ${payload.choiceId} no estado ${state}`,
     );
-
-    // TODO: Adicionar lógica para 'switch(state)' e 'switch(payload.choiceId)'
-    // ex: if (state === 'SCENE_1_SUPERVISOR' && payload.choiceId === '1') { ... }
   }
 
   // --- FIM DA LÓGICA DO PRÓLOGO ---
@@ -933,31 +779,13 @@ export class GameGateway
     goldGained: number;
     newLevel?: number;
   }) {
-    console.log(
-      `[GameGateway DEBUG] Evento combat.win.stats RECEBIDO. Payload:`,
-      payload,
-    );
-
     const clientSocket = this.getClientSocket(payload.playerId);
     if (clientSocket) {
-      console.log(
-        `[GameGateway DEBUG] Socket encontrado para ${payload.playerId} (${clientSocket.id}). Emitindo playerUpdated...`,
-      );
-
       clientSocket.emit('playerUpdated', {
         newTotalXp: payload.newTotalXp,
         goldGained: payload.goldGained,
         newLevel: payload.newLevel,
       });
-
-      console.log(
-        `[GameGateway DEBUG] Evento playerUpdated ENVIADO para ${clientSocket.id}`,
-      );
-    } else {
-      console.error(
-        `[GameGateway DEBUG] ERRO CRÍTICO: Socket NÃO encontrado para ${payload.playerId} ao tentar enviar playerUpdated.`,
-      );
-      console.log(`[GameGateway] Sockets ativos:`, this.getActiveSocketsInfo());
     }
   }
 
@@ -966,28 +794,9 @@ export class GameGateway
     playerId: string;
     drops: LootDropPayload[];
   }) {
-    console.log(
-      `[GameGateway] Evento combat.win.loot RECEBIDO para ${payload.playerId}`,
-      {
-        dropsCount: payload.drops.length,
-        drops: payload.drops,
-      },
-    );
-
     const clientSocket = this.getClientSocket(payload.playerId);
     if (clientSocket) {
-      console.log(
-        `[GameGateway] Socket encontrado para ${payload.playerId}. Emitindo lootReceived...`,
-      );
       clientSocket.emit('lootReceived', { drops: payload.drops });
-      console.log(
-        `[GameGateway] Evento lootReceived enviado para ${payload.playerId}`,
-      );
-    } else {
-      console.error(
-        `[GameGateway] ERRO: Socket NÃO encontrado para ${payload.playerId} em combat.win.loot`,
-      );
-      console.log(`[GameGateway] Sockets ativos:`, this.getActiveSocketsInfo());
     }
   }
 
@@ -996,45 +805,21 @@ export class GameGateway
     playerId: string;
     result: 'win' | 'loss' | 'flee';
   }) {
-    console.log(
-      `[GameGateway] Evento combat.end (${payload.result}) RECEBIDO para ${payload.playerId}`,
-    );
-
     const clientSocket = this.getClientSocket(payload.playerId);
     if (clientSocket) {
-      console.log(
-        `[GameGateway] Socket encontrado para ${payload.playerId}. Emitindo combatEnd (${payload.result})...`,
-      );
       clientSocket.emit('combatEnd', payload.result);
-      console.log(
-        `[GameGateway] Evento combatEnd enviado para ${payload.playerId}`,
-      );
-    } else {
-      console.error(
-        `[GameGateway] ERRO: Socket NÃO encontrado para ${payload.playerId} em combat.end`,
-      );
-      console.log(`[GameGateway] Sockets ativos:`, this.getActiveSocketsInfo());
     }
   }
 
-  // Listener de VITAIS (HP/ECO) - (EXISTENTE)
   @OnEvent('character.vitals.updated')
   handleVitalsUpdated(payload: {
     characterId: string;
     vitals: { hp: number; maxHp: number; eco: number; maxEco: number };
   }) {
     const { characterId, vitals } = payload;
-    console.log(
-      `[GameGateway] Evento character.vitals.updated RECEBIDO para ${characterId}`,
-    );
-
     const clientSocket = this.getClientSocket(characterId);
     if (clientSocket) {
-      console.log(
-        `[GameGateway] Emitindo playerVitalsUpdated para ${characterId}`,
-      );
       clientSocket.emit('playerVitalsUpdated', vitals);
-      // Atualizar também o estado interno do socket para a regeneração
       if (clientSocket.data.user?.character) {
         clientSocket.data.user.character = {
           ...clientSocket.data.user.character,
@@ -1044,7 +829,6 @@ export class GameGateway
     }
   }
 
-  // Listener para STATS BASE (STR/DEX/etc)
   @OnEvent('character.baseStats.updated')
   handleBaseStatsUpdated(payload: {
     characterId: string;
@@ -1057,18 +841,9 @@ export class GameGateway
     };
   }) {
     const { characterId, baseStats } = payload;
-    console.log(
-      `[GameGateway] Evento character.baseStats.updated RECEBIDO para ${characterId}`,
-    );
-
     const clientSocket = this.getClientSocket(characterId);
     if (clientSocket) {
-      console.log(
-        `[GameGateway] Emitindo playerBaseStatsUpdated para ${characterId}`,
-      );
       clientSocket.emit('playerBaseStatsUpdated', baseStats);
-
-      // Atualizar também o estado interno do socket
       if (clientSocket.data.user?.character) {
         clientSocket.data.user.character = {
           ...clientSocket.data.user.character,
@@ -1078,7 +853,6 @@ export class GameGateway
     }
   }
 
-  // Listener para quando uma Keyword é ganha
   @OnEvent('character.keyword.gained')
   async handleKeywordGained(payload: {
     characterId: string;
@@ -1086,36 +860,22 @@ export class GameGateway
     keywordDescription: string;
   }) {
     const { characterId, keywordName, keywordDescription } = payload;
-    console.log(
-      `[GameGateway] Evento character.keyword.gained RECEBIDO para ${characterId}: ${keywordName}`,
-    );
-
     const clientSocket = this.getClientSocket(characterId);
     if (clientSocket) {
-      // 1. Notificar o jogador sobre o novo Eco
       clientSocket.emit(
         'serverMessage',
         `✨ Eco Absorvido: ${keywordName} - ${keywordDescription}`,
       );
 
-      // 2. Pedir ao cliente para atualizar as Keywords e Skills disponíveis
-      // (Reutilizamos os handlers existentes que buscam e emitem os dados)
       try {
         await this.handleRequestKeywords(clientSocket);
         await this.handleRequestAvailableSkills(clientSocket);
-        console.log(
-          `[GameGateway] Atualizações de Keywords/Skills emitidas para ${characterId} após ganhar ${keywordName}.`,
-        );
       } catch (error) {
         console.error(
           `[GameGateway] Erro ao emitir atualizações pós-keyword para ${characterId}:`,
           error,
         );
       }
-    } else {
-      console.warn(
-        `[GameGateway] Socket não encontrado para ${characterId} em keyword.gained`,
-      );
     }
   }
 
@@ -1123,24 +883,9 @@ export class GameGateway
     const sockets = Array.from(
       this.server.sockets.sockets.values(),
     ) as SocketWithAuth[];
-    const foundSocket = sockets.find(
-      (s) => s.data.user?.character?.id === playerId,
-    );
-
-    console.log(
-      `[GameGateway] Buscando socket para player ${playerId}. Encontrado: ${!!foundSocket}`,
-    );
-    if (foundSocket) {
-      console.log(`[GameGateway] Socket encontrado:`, {
-        characterId: foundSocket.data.user?.character?.id,
-        email: foundSocket.data.user?.email,
-      });
-    }
-
-    return foundSocket;
+    return sockets.find((s) => s.data.user?.character?.id === playerId);
   }
 
-  // Método para debug de sockets ativos
   private getActiveSocketsInfo(): any[] {
     const sockets = Array.from(
       this.server.sockets.sockets.values(),
@@ -1157,6 +902,12 @@ export class GameGateway
       client.disconnect();
       return;
     }
+
+    // --- BLOQUEAR ENVIO DE SALA DURANTE O PRÓLOGO ---
+    if (client.data.user.character.prologueState !== 'COMPLETED') {
+      return;
+    }
+    // --- FIM DO BLOQUEIO ---
 
     const mapId = client.data.user.character.mapId;
     const currentPlayerId = client.data.user.character.id;
