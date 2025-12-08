@@ -11,7 +11,7 @@ export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
-  ) {}
+  ) { }
 
   async register(dto: RegisterDto) {
     // 1. Verificar se o email já existe
@@ -55,7 +55,7 @@ export class AuthService {
               // ID da sala do prólogo do seed.ts
               mapId: 'pr_optimization_sector',
               // Estado inicial do prólogo
-              prologueState: 'SCENE_1_START',
+              prologueState: 'SCENE_1_INTRO',
               // --- FIM DA ATUALIZAÇÃO ---
               // --- NOVO: CONECTAR KEYWORDS INICIAIS ---
               powerKeywords: {

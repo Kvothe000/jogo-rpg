@@ -40,6 +40,9 @@ import {
 import { EcoService } from 'src/eco/eco.service';
 import { SkillService } from 'src/skill/skill.service';
 import { OnModuleDestroy } from '@nestjs/common';
+import { PrologueService } from './prologue/prologue.service';
+import { RoomService } from './room/room.service';
+import { QuestService } from 'src/quest/quest.service';
 
 // --- Constantes para Regeneração ---
 const REGEN_INTERVAL_MS = 10000;
@@ -53,11 +56,10 @@ const ECO_REGEN_PER_INTERVAL = 3;
 })
 export class GameGateway
   implements
-    OnGatewayConnection,
-    OnGatewayDisconnect,
-    OnGatewayInit,
-    OnModuleDestroy
-{
+  OnGatewayConnection,
+  OnGatewayDisconnect,
+  OnGatewayInit,
+  OnModuleDestroy {
   @WebSocketServer()
   server: Server;
   private jwtSecret: string;
@@ -71,6 +73,9 @@ export class GameGateway
     private characterStatsService: CharacterStatsService,
     private ecoService: EcoService,
     private skillService: SkillService,
+    private prologueService: PrologueService,
+    private roomService: RoomService,
+    private questService: QuestService,
   ) {
     const secret = process.env.JWT_SECRET;
     if (!secret) {
@@ -210,10 +215,9 @@ export class GameGateway
       );
 
       // --- LÓGICA DO PRÓLOGO ---
-      this.triggerPrologueEvent(client); // Removido await
+      this.triggerPrologueEvent(client);
       // --- FIM DA LÓGICA DO PRÓLOGO ---
 
-      // Envia os dados da sala DEPOIS do prólogo, se aplicável
       await this.sendRoomDataToClient(client);
 
       if (!this.regenInterval) {
@@ -261,8 +265,8 @@ export class GameGateway
 
   @SubscribeMessage('playerLook')
   async handlePlayerLook(@ConnectedSocket() client: SocketWithAuth) {
-    this.triggerPrologueEvent(client); // Verifica o prólogo primeiro
-    await this.sendRoomDataToClient(client); // Envia dados da sala (se não estiver no prólogo)
+    this.triggerPrologueEvent(client);
+    await this.sendRoomDataToClient(client);
   }
 
   @SubscribeMessage('playerMove')
@@ -499,18 +503,82 @@ export class GameGateway
     }
   }
 
+  @SubscribeMessage('playerRest')
+  async handlePlayerRest(
+    @ConnectedSocket() socket: SocketWithAuth,
+  ): Promise<void> {
+    const characterId = socket.data.user?.character?.id;
+    if (!characterId) return;
+
+    // 1. Check if in combat
+    const combat = this.battleService.getCombat(characterId);
+    if (combat) {
+      socket.emit('serverMessage', 'ALERTA: Não é possível iniciar reparos durante combate!');
+      return;
+    }
+
+    // 2. Fetch stats to get Max values
+    const character = await this.prisma.character.findUnique({
+      where: { id: characterId },
+    });
+
+    if (!character) return;
+
+    // 3. Update to Max
+    await this.prisma.character.update({
+      where: { id: characterId },
+      data: {
+        hp: character.maxHp,
+        eco: character.maxEco
+      }
+    });
+
+    // 4. Notify
+    this.server.to(socket.id).emit('playerVitalsUpdated', {
+      hp: character.maxHp,
+      maxHp: character.maxHp,
+      eco: character.maxEco,
+      maxEco: character.maxEco
+    });
+
+    socket.emit('serverMessage', '⚡ SISTEMAS DE REPARO ATIVADOS. Integridade e Eco restaurados.');
+  }
+
   @SubscribeMessage('startCombat')
-  async handleStartCombat(@ConnectedSocket() client: SocketWithAuth) {
+  async handleStartCombat(
+    @ConnectedSocket() client: SocketWithAuth,
+    @MessageBody() payload: { npcInstanceId?: string },
+  ) {
     if (!client.data.user.character) {
       client.emit('serverMessage', 'Erro: Personagem não encontrado.');
       return;
     }
 
-    const MONSTER_ID = 'mon_slime_mana';
+    let monsterTemplateId = 'mon_slime_mana'; // Fallback padrão
+
+    // Se veio um ID de instância, vamos buscar qual é o template
+    if (payload?.npcInstanceId) {
+      const npcInstance = await this.prisma.nPCInstance.findUnique({
+        where: { id: payload.npcInstanceId },
+        include: { template: true },
+      });
+
+      if (npcInstance) {
+        if (!npcInstance.template.isHostile) {
+          client.emit('serverMessage', 'Este NPC não é hostil.');
+          return;
+        }
+        monsterTemplateId = npcInstance.template.id;
+      } else {
+        client.emit('serverMessage', 'Alvo não encontrado.');
+        return;
+      }
+    }
 
     const combatData = await this.battleService.initializeCombat(
       client.data.user,
-      MONSTER_ID,
+      monsterTemplateId,
+      payload?.npcInstanceId
     );
 
     if (combatData) {
@@ -552,6 +620,88 @@ export class GameGateway
     }
   }
 
+  @SubscribeMessage('playerInteractNpc')
+  async handlePlayerInteractNpc(
+    @ConnectedSocket() client: SocketWithAuth,
+    @MessageBody() payload: { npcInstanceId: string },
+  ) {
+    const characterId = client.data.user?.character?.id;
+    const npcInstanceId = payload?.npcInstanceId;
+
+    if (!characterId || !npcInstanceId) {
+      return;
+    }
+
+    try {
+      const npcInstance = await this.prisma.nPCInstance.findUnique({
+        where: { id: npcInstanceId },
+        include: { template: true },
+      });
+
+      if (!npcInstance) {
+        client.emit('serverMessage', 'NPC não encontrado.');
+        return;
+      }
+
+      // Lógica de Diálogo Contextual
+      // Tenta ler o final do prólogo (se existir)
+      const prologueData = client.data.user.character.prologueData as any || {};
+      const prologueEnding = prologueData.ending; // 'ENTER_PORTAL' | 'CAUGHT_CITADEL'
+
+      let dialogue = '"..." (Ele não parece querer conversar.)';
+
+      // 1. Guarda da Cidadela
+      if (npcInstance.template.name.includes('Guarda')) {
+        if (prologueEnding === 'CAUGHT_CITADEL') {
+          dialogue = '"Volte para a fila, rato. Sua reeducação ainda não acabou."';
+        } else if (prologueEnding === 'ENTER_PORTAL') {
+          dialogue = '"Você... como você tem acesso a este setor? IDENTIFIQUE-SE!"';
+        } else {
+          dialogue = '"Mantenha a distância. A Ordem observa."';
+        }
+      }
+      // 2. Supervisor / Autoridade
+      else if (npcInstance.template.name.includes('Supervisor')) {
+        dialogue = '"Anomalias detectadas. O sistema será purgado."';
+      }
+      // 3. Monstros / Outros
+      else if (npcInstance.template.isHostile) {
+        dialogue = '"Grrr..." (A criatura te encara com hostilidade)';
+      }
+      else {
+        // Fallback para NPCs genéricos ou template
+        dialogue = npcInstance.template.stats && (npcInstance.template.stats as any).dialogue
+          ? (npcInstance.template.stats as any).dialogue
+          : dialogue;
+      }
+
+      client.emit('npcDialogue', {
+        npcName: npcInstance.template.name,
+        dialogue: dialogue,
+      });
+
+      // --- QUEST UPDATE: INTERACT ---
+      // Check if this interaction progresses any quest
+      const progressUpdate = await this.questService.updateProgress(characterId, 'interact', npcInstance.template.id);
+      if (progressUpdate && progressUpdate.type === 'COMPLETED') {
+        const questTitle = (progressUpdate.quest as any).title;
+        client.emit('serverMessage', `QUEST COMPLETADA: ${questTitle}!`);
+        client.emit('playSfx', 'levelUp'); // Reusing levelUp sfx for now
+        // Refresh quests on client
+        const activeQuests = await this.questService.getActiveQuests(characterId);
+        client.emit('updateQuests', { quests: activeQuests });
+      } else if (progressUpdate) {
+        client.emit('serverMessage', `Quest Atualizada.`);
+        const activeQuests = await this.questService.getActiveQuests(characterId);
+        client.emit('updateQuests', { quests: activeQuests });
+      }
+
+    } catch (error) {
+      console.error(`[InteractNPC] Erro:`, error);
+      client.emit('serverMessage', 'Falha ao interagir com NPC.');
+    }
+  }
+
   @SubscribeMessage('combatUseSkill')
   async handleCombatUseSkill(
     @ConnectedSocket() client: SocketWithAuth,
@@ -573,6 +723,13 @@ export class GameGateway
 
       if (combatUpdate) {
         client.emit('combatUpdate', combatUpdate);
+
+        // --- INTEGRAÇÃO PROLOGO ---
+        // Se usar skill com sucesso, tenta avançar o tutorial (se estiver na cena certa)
+        if (client.data.user.character?.prologueState === 'SCENE_5_SKILL_TUTORIAL') {
+          await this.prologueService.handleInteract(playerId, 'SKILL_USED_SUCCESS');
+          this.triggerPrologueEvent(client);
+        }
       }
     } catch (error) {
       const message =
@@ -684,210 +841,146 @@ export class GameGateway
     }
   }
 
-  // --- LÓGICA DO PRÓLOGO (CORRIGIDA) ---
+  @SubscribeMessage('requestQuests')
+  async handleRequestQuests(@ConnectedSocket() client: SocketWithAuth) {
+    const characterId = client.data.user?.character?.id;
+    if (!characterId) return;
 
-  /**
-   * Verifica o estado atual do prólogo do jogador e envia o evento apropriado.
-   */
-  private triggerPrologueEvent(client: SocketWithAuth): void {
-    // CORRIGIDO: Removido async
-    // CORREÇÃO: Verificar 'character' primeiro (TS18047)
-    const character = client.data.user?.character;
-    if (!character || character.prologueState === 'COMPLETED') {
-      return;
-    }
-
-    const state = character.prologueState;
-    console.log(`[Prologue] Disparando evento para estado: ${state}`);
-
-    switch (state) {
-      // CORREÇÃO: Lidar com 'NOT_STARTED' como se fosse 'SCENE_1_START'
-      case 'NOT_STARTED':
-      case 'SCENE_1_START':
-        client.emit('prologueUpdate', {
-          // CORREÇÃO: Usar 'step' em vez de 'scene' (TS2345)
-          step: 'SCENE_1_START',
-          message:
-            '>> Tarefa: Otimizar Fluxo de Dados 7-Alfa. Aproxime-se do <span class="highlight-interact">Terminal Primário</span> e inicie a calibração. <<',
-          targetId: 'terminal_primario_01',
-          scene: '',
-        });
-        break;
-
-      default:
-        console.warn(`[Prologue] Estado do prólogo desconhecido: ${state}`);
+    try {
+      const activeQuests = await this.questService.getActiveQuests(characterId);
+      client.emit('updateQuests', { quests: activeQuests });
+    } catch (error) {
+      console.error('Error fetching quests:', error);
     }
   }
 
-  /**
-   * Handler para quando o jogador interage com algo durante o prólogo.
-   */
+  // --- LÓGICA DO PRÓLOGO (CORRIGIDA) ---
+
+  // --- LÓGICA DO PRÓLOGO (VIA SERVICE) ---
+
+  private async triggerPrologueEvent(client: SocketWithAuth) {
+    const characterId = client.data.user?.character?.id;
+    if (!characterId) return;
+
+    // Busca o payload atualizado do serviço
+    const payload = await this.prologueService.getPrologueState(characterId);
+
+    if (payload) {
+      console.log(`[Prologue] Enviando update para ${characterId}: ${payload.step}`);
+      client.emit('prologueUpdate', payload);
+
+      // --- RECUPERAÇÃO DE ESTADOS AUTOMÁTICOS (RELOAD/RECONNECT) ---
+      if (payload.step === 'SCENE_2_CONFINEMENT') {
+        setTimeout(async () => {
+          const followup = await this.prologueService.forceTransition(characterId, 'SCENE_2_ELARA_CONTACT');
+          if (followup) {
+            client.emit('prologueUpdate', followup);
+            if (client.data.user?.character) client.data.user.character.prologueState = followup.step;
+          }
+        }, 2000); // Recuperação mais rápida
+      }
+
+      if (payload.step === 'SCENE_1_GLITCH') {
+        setTimeout(async () => {
+          const followup = await this.prologueService.forceTransition(characterId, 'SCENE_1_SUPERVISOR');
+          if (followup) {
+            client.emit('prologueUpdate', followup);
+            if (client.data.user?.character) client.data.user.character.prologueState = followup.step;
+          }
+        }, 2000);
+      }
+    }
+  }
+
   @SubscribeMessage('prologueInteract')
   async handlePrologueInteract(
     @ConnectedSocket() client: SocketWithAuth,
     @MessageBody() payload: { targetId?: string },
   ) {
-    // CORREÇÃO: Verificar 'character' primeiro (TS18047)
-    const character = client.data.user?.character;
-    if (!character || character.prologueState === 'COMPLETED') return;
+    const characterId = client.data.user?.character?.id;
+    if (!characterId || !payload.targetId) return;
 
-    const state = character.prologueState;
-    const characterId = character.id;
+    const response = await this.prologueService.handleInteract(characterId, payload.targetId);
 
-    console.log(
-      `[Prologue] Interação recebida: ${payload.targetId} no estado ${state}`,
-    );
-
-    // CORREÇÃO: Aceitar 'NOT_STARTED' ou 'SCENE_1_START'
-    if (
-      (state === 'SCENE_1_START' || state === 'NOT_STARTED') &&
-      payload.targetId === 'terminal_primario_01'
-    ) {
-      const newState = 'SCENE_1_GLITCH';
-      await this.prisma.character.update({
-        where: { id: characterId },
-        data: { prologueState: newState },
-      });
-
-      // CORREÇÃO: (TS18047) Atribuir à variável 'character' local
-      character.prologueState = newState;
-
-      client.emit('prologueUpdate', {
-        // CORREÇÃO: Usar 'step' em vez de 'scene' (TS2345)
-        step: newState,
-        message:
-          '//- PROJETO RESSONÂNCIA :: ECO DETECTADO :: AMEAÇA NÍVEL S_GMA -//',
-        scene: '',
-        targetId: '',
-      });
-
-      // Simular a chegada do Supervisor após um delay
-      setTimeout(() => {
-        // Passa o client (que tem a referência do socket) e o ID
-        this.triggerSupervisorDialogue(client, characterId);
-      }, 3000); // Delay de 3 segundos
-    }
-  }
-
-  /**
-   * Função auxiliar para disparar o diálogo do Supervisor (Cena 1.4)
-   */
-  private async triggerSupervisorDialogue(
-    client: SocketWithAuth,
-    characterId: string,
-  ) {
-    const newState = 'SCENE_1_SUPERVISOR_DIALOGUE';
-
-    // Garante que o cliente ainda está conectado e o personagem existe
-    const currentClient = this.getClientSocket(characterId);
-    if (!currentClient || !currentClient.data.user?.character) {
-      console.warn(
-        `[Prologue] Cliente ${characterId} desconectou antes do diálogo do supervisor.`,
-      );
-      return;
-    }
-
-    await this.prisma.character.update({
-      where: { id: characterId },
-      data: { prologueState: newState },
-    });
-    currentClient.data.user.character.prologueState = newState;
-
-    const dialogueOptions: DialogueOption[] = [
-      {
-        id: '1',
-        text: '[Confuso] "Ressonância? O que aconteceu? Foi um acidente!"',
-      },
-      {
-        id: '2',
-        text: '[Desafiador] "Análise? Que direito vocês têm? O que era aquela mensagem?"',
-      },
-      { id: '3', text: '[Silêncio] (...apenas encarar o Supervisor.)' },
-    ];
-
-    currentClient.emit('prologueUpdate', {
-      step: newState,
-      message:
-        '**Supervisor:** "Incompatibilidade de Ressonância. Nível Sigma confirmado. Unidade [ID do Jogador], sua instabilidade compromete a harmonia deste setor. Lamento. Protocolos de contenção serão iniciados. É para evitar... o caos. Levem-no para a Análise Compulsória."',
-      dialogueOptions: dialogueOptions,
-      scene: '',
-      targetId: '',
-    });
-  }
-
-  /**
-   * Handler para quando o jogador faz uma escolha de diálogo.
-   */
-  @SubscribeMessage('prologueChoice')
-  handlePrologueChoice(
-    @ConnectedSocket() client: SocketWithAuth,
-    @MessageBody() payload: { choiceId: string },
-  ) {
-    // CORREÇÃO: Verificar 'character' primeiro (TS18047)
-    const character = client.data.user?.character;
-    if (!character || character.prologueState === 'COMPLETED') return;
-
-    const state = character.prologueState;
-    const characterId = character.id;
-    const choice = payload.choiceId;
-
-    console.log(
-      `[Prologue] Escolha recebida: ${payload.choiceId} no estado ${state}`,
-    );
-
-    // Lógica para a resposta ao Supervisor
-    if (state === 'SCENE_1_SUPERVISOR_DIALOGUE') {
-      let responseMessage = '';
-
-      switch (choice) {
-        case '1':
-          responseMessage =
-            '**Supervisor:** "Acidentes não exibem assinaturas de Eco, unidade. O protocolo é claro. Coopere."';
-          break;
-        case '2':
-          responseMessage =
-            '**Supervisor:** "Informação confidencial. Sua instabilidade justifica a ação. Resistir apenas confirmará o nível da ameaça."';
-          break;
-        case '3':
-          responseMessage =
-            '**Supervisor:** (Assente levemente) "Prudente. Sigam."';
-          break;
+    if (response) {
+      // Atualiza cache local do socket se necessário
+      if (client.data.user?.character) {
+        client.data.user.character.prologueState = response.step;
       }
 
-      // Envia a resposta do Supervisor (sem mais opções)
-      client.emit('prologueUpdate', {
-        step: 'SCENE_1_DETAINMENT',
-        message: responseMessage,
-        scene: '',
-        targetId: '',
-      });
+      client.emit('prologueUpdate', response);
 
-      // Simula a detenção e o início da Cena 2
-      setTimeout(async () => {
-        const newState = 'SCENE_2_DETAINED';
-        await this.prisma.character.update({
-          where: { id: characterId },
-          data: { prologueState: newState },
-        });
-
-        // Verifica se o cliente ainda existe antes de atualizar
-        const currentClient = this.getClientSocket(characterId);
-        if (currentClient && currentClient.data.user?.character) {
-          currentClient.data.user.character.prologueState = newState;
-
-          // Envia o update da Cena 2 (Cela de Contenção)
-          currentClient.emit('prologueUpdate', {
-            step: newState,
-            message:
-              'Você está numa cela de contenção fria e minimalista. Sua Interface está bloqueada. A sensação de impotência é total... até que algo pisca no canto da sua visão.',
-            scene: '',
-            targetId: '',
-          });
-          // (O pesadelo e o contato de Elara virão a seguir)
-        }
-      }, 4000); // Delay de 4 segundos para o jogador ler a resposta
+      // EFEITOS COLATERAIS (Timers, etc)
+      if (response.step === 'SCENE_1_GLITCH') {
+        setTimeout(async () => {
+          const followup = await this.prologueService.forceTransition(characterId, 'SCENE_1_SUPERVISOR');
+          if (followup) {
+            client.emit('prologueUpdate', followup);
+            if (client.data.user?.character) client.data.user.character.prologueState = followup.step;
+          }
+        }, 3000);
+      }
     }
   }
+
+  @SubscribeMessage('prologueChoice')
+  async handlePrologueChoice(
+    @ConnectedSocket() client: SocketWithAuth,
+    @MessageBody() payload: { choiceId: string }
+  ) {
+    const characterId = client.data.user?.character?.id;
+    if (!characterId || !payload.choiceId) return;
+
+    const response = await this.prologueService.handleChoice(characterId, payload.choiceId);
+
+    if (response) {
+      if (client.data.user?.character) {
+        client.data.user.character.prologueState = response.step;
+      }
+      client.emit('prologueUpdate', response);
+
+      // Se completou o prólogo, atualiza o mapa
+      if (response.step === 'COMPLETED') {
+        client.emit('serverMessage', 'Prólogo finalizado! Bem-vindo ao Mundo Real.');
+        // Busca dados atualizados (incluindo mapa novo)
+        const updatedUser = await this.prisma.user.findUnique({
+          where: { id: client.data.user.id },
+          include: { character: true }
+        });
+        if (updatedUser) {
+          client.data.user = updatedUser;
+          // Força atualização da sala para o cliente
+          await this.handlePlayerLook(client);
+        }
+      }
+
+      // --- EFEITOS DE TRANSIÇÃO AUTOMÁTICA ---
+
+      // Cena 1: Glitch -> Supervisor
+      if (response.step === 'SCENE_1_GLITCH') {
+        setTimeout(async () => {
+          const followup = await this.prologueService.forceTransition(characterId, 'SCENE_1_SUPERVISOR');
+          if (followup) {
+            client.emit('prologueUpdate', followup);
+            if (client.data.user?.character) client.data.user.character.prologueState = followup.step;
+          }
+        }, 3000);
+      }
+
+      // Cena 2: Confinamento -> Contato de Elara
+      if (response.step === 'SCENE_2_CONFINEMENT') {
+        setTimeout(async () => {
+          const followup = await this.prologueService.forceTransition(characterId, 'SCENE_2_ELARA_CONTACT');
+          if (followup) {
+            client.emit('prologueUpdate', followup);
+            if (client.data.user?.character) client.data.user.character.prologueState = followup.step;
+          }
+        }, 4000); // 4 segundos de "tela bloqueada" antes de Elara falar
+      }
+    }
+  }
+
+
 
   // --- FIM DA LÓGICA DO PRÓLOGO ---
 
@@ -1010,7 +1103,6 @@ export class GameGateway
   }
 
   private async sendRoomDataToClient(client: SocketWithAuth) {
-    // CORREÇÃO: Adicionada verificação de 'character'
     if (!client.data.user || !client.data.user.character) {
       client.disconnect();
       return;
@@ -1025,13 +1117,8 @@ export class GameGateway
     const mapId = client.data.user.character.mapId;
     const currentPlayerId = client.data.user.character.id;
 
-    const room = await this.prisma.gameMap.findUnique({
-      where: { id: mapId },
-      include: {
-        characters: { select: { id: true, name: true } },
-        npcInstances: { include: { template: { select: { name: true } } } },
-      },
-    });
+    // Use RoomService to get enriched data
+    const room = await this.roomService.getRoomData(mapId);
 
     if (room) {
       const otherPlayers = room.characters.filter(

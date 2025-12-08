@@ -734,6 +734,67 @@ async function main() {
     },
   });
 
+  // --- POPULAÇÃO DA SALA INICIAL (Pós-Prólogo) ---
+  await prisma.nPCInstance.deleteMany({ where: { mapId: ROOM_ID_START } });
+
+  await prisma.nPCInstance.create({
+    data: { templateId: MONSTER_TEMPLATE_SLIME, mapId: ROOM_ID_START, currentHp: 80 }
+  });
+
+  await prisma.nPCInstance.create({
+    data: { templateId: GOBLIN_RALE_ID, mapId: ROOM_ID_START, currentHp: 60 }
+  });
+
+  // --- 9. QUESTS ---
+  const QUEST_ID_FIRST = 'qst_eco_awakening';
+
+  await prisma.quest.upsert({
+    where: { id: QUEST_ID_FIRST },
+    update: {},
+    create: {
+      id: QUEST_ID_FIRST,
+      title: 'Despertar do Eco',
+      description: 'Você sentiu o poder fluir. Agora precisa entender o que aconteceu. Procure por alguém que possa explicar sua situação.',
+      requiredLevel: 1,
+      startNpcId: NPC_TEMPLATE_SUPERVISOR, // Fallback, mas vamos focar no NPC Mentor
+      endNpcId: NPC_TEMPLATE_GUARD, // Fallback
+      objectives: {
+        interact: { targetId: 'npc_template_old_mentor', count: 1 }
+      },
+      rewards: {
+        xp: 100,
+        gold: 50,
+        itemId: ITEM_SMALL_ECO_BATTERY
+      }
+    }
+  });
+
+  // Criar NPC Mentor
+  const NPC_TEMPLATE_MENTOR = 'npc_template_old_mentor';
+  await prisma.nPCTemplate.upsert({
+    where: { id: NPC_TEMPLATE_MENTOR },
+    update: {},
+    create: {
+      id: NPC_TEMPLATE_MENTOR,
+      name: 'Velho Escriba',
+      description: 'Um homem idoso com roupas gastas, mas olhos vivos. Ele parece saber mais do que aparenta.',
+      isHostile: false,
+      stats: { dialogue: '"Ah, mais um "erro" no sistema? Venha, não tenha medo. Eles não podem nos ver aqui."' },
+      types: ['humano', 'renegado']
+    }
+  });
+
+  // Colocar Mentor na Sala Inicial
+  await prisma.nPCInstance.create({
+    data: {
+      templateId: NPC_TEMPLATE_MENTOR,
+      mapId: ROOM_ID_START
+    }
+  });
+
+  console.log('Primeira Quest e Mentor adicionados.');
+
+
   console.log('Seed v9 concluído.');
 }
 

@@ -3,47 +3,69 @@
 :root {
   /* Fontes (Exemplo - Escolha ou instale fontes depois) */
   --font-main: 'Share Tech Mono', monospace;
-  --font-display: 'Orbitron', sans-serif; /* Fonte mais "digital" para títulos/UI */
+  --font-display: 'Orbitron', sans-serif;
+  /* Fonte mais "digital" para títulos/UI */
 
   /* Paleta Base (Escura) */
-  --color-background: #0a0a0f; /* Um preto/azul muito escuro */
-  --color-text: #E0E1DD;       /* Prateado/branco-sujo para texto geral */
-  --color-border: #415A77;     /* Cinza-ardósia para bordas/divisórias */
-  --color-interactive-bg: #1a1a2e; /* Fundo para botões/inputs */
+  --color-background: #0a0a0f;
+  /* Um preto/azul muito escuro */
+  --color-text: #E0E1DD;
+  /* Prateado/branco-sujo para texto geral */
+  --color-border: #415A77;
+  /* Cinza-ardósia para bordas/divisórias */
+  --color-interactive-bg: #1a1a2e;
+  /* Fundo para botões/inputs */
 
   /* Paleta Cidadela (Ordem) */
-  --color-citadel-primary: #0D1B2A;  /* Azul-profundo */
-  --color-citadel-secondary: #1a237e; /* Azul da Interface - mais vibrante */
-  --color-citadel-accent: #415A77;    /* Cinza-ardósia para detalhes */
-  --color-citadel-text: #E0E1DD;     /* Prateado */
-  --color-citadel-glow: #304ffe;     /* Azul para efeitos glow */
+  --color-citadel-primary: #0D1B2A;
+  /* Azul-profundo */
+  --color-citadel-secondary: #1a237e;
+  /* Azul da Interface - mais vibrante */
+  --color-citadel-accent: #415A77;
+  /* Cinza-ardósia para detalhes */
+  --color-citadel-text: #E0E1DD;
+  /* Prateado */
+  --color-citadel-glow: #304ffe;
+  /* Azul para efeitos glow */
 
   /* Paleta Renegado (Caos/Eco) */
   --color-renegade-magenta: #FF00FF;
   --color-renegade-cyan: #00EEFF;
   --color-renegade-purple: #7209B7;
-  --color-renegade-accent: #ff66ff; /* Magenta mais claro para hover/foco */
-  --color-renegade-glow: #00ffff;   /* Ciano para efeitos glow */
+  --color-renegade-accent: #ff66ff;
+  /* Magenta mais claro para hover/foco */
+  --color-renegade-glow: #00ffff;
+  /* Ciano para efeitos glow */
 
   /* Cores de Glitch/Dados */
-  --color-glitch-primary: #00ff00;   /* Verde para glitches */
-  --color-glitch-secondary: #ff0000; /* Vermelho para glitches */
+  --color-glitch-primary: #00ff00;
+  /* Verde para glitches */
+  --color-glitch-secondary: #ff0000;
+  /* Vermelho para glitches */
 
   /* Cores de Feedback */
-  --color-hp: #dc3545;        /* Vermelho para HP */
-  --color-eco: var(--color-renegade-cyan); /* Ciano para Eco */
-  --color-xp: #ffc107;        /* Amarelo para XP */
-  --color-success: #28a745;    /* Verde para sucesso */
-  --color-warning: #ffc107;    /* Amarelo para aviso */
-  --color-danger: #dc3545;     /* Vermelho para erro/perigo */
-  --color-info: #17a2b8;       /* Azul info */
+  --color-hp: #dc3545;
+  /* Vermelho para HP */
+  --color-eco: var(--color-renegade-cyan);
+  /* Ciano para Eco */
+  --color-xp: #ffc107;
+  /* Amarelo para XP */
+  --color-success: #28a745;
+  /* Verde para sucesso */
+  --color-warning: #ffc107;
+  /* Amarelo para aviso */
+  --color-danger: #dc3545;
+  /* Vermelho para erro/perigo */
+  --color-info: #17a2b8;
+  /* Azul info */
 
   /* --- Restante das definições :root --- */
   font-family: var(--font-main);
   line-height: 1.5;
   font-weight: 400;
 
-  color-scheme: dark; /* Forçar modo escuro */
+  color-scheme: dark;
+  /* Forçar modo escuro */
   color: var(--color-text);
   background-color: var(--color-background);
 
@@ -84,51 +106,175 @@
 }
 
 @keyframes glitch-anim {
-  0% { clip: rect(42px, 9999px, 44px, 0); }
-  5% { clip: rect(12px, 9999px, 59px, 0); }
-  10% { clip: rect(48px, 9999px, 29px, 0); }
-  15% { clip: rect(42px, 9999px, 73px, 0); }
-  20% { clip: rect(63px, 9999px, 27px, 0); }
-  25% { clip: rect(34px, 9999px, 55px, 0); }
-  30% { clip: rect(86px, 9999px, 73px, 0); }
-  35% { clip: rect(20px, 9999px, 20px, 0); }
-  40% { clip: rect(26px, 9999px, 60px, 0); }
-  45% { clip: rect(25px, 9999px, 66px, 0); }
-  50% { clip: rect(57px, 9999px, 98px, 0); }
-  55% { clip: rect(5px, 9999px, 46px, 0); }
-  60% { clip: rect(82px, 9999px, 31px, 0); }
-  65% { clip: rect(54px, 9999px, 27px, 0); }
-  70% { clip: rect(28px, 9999px, 99px, 0); }
-  75% { clip: rect(45px, 9999px, 69px, 0); }
-  80% { clip: rect(23px, 9999px, 85px, 0); }
-  85% { clip: rect(54px, 9999px, 84px, 0); }
-  90% { clip: rect(45px, 9999px, 47px, 0); }
-  95% { clip: rect(37px, 9999px, 20px, 0); }
-  100% { clip: rect(4px, 9999px, 91px, 0); }
+  0% {
+    clip: rect(42px, 9999px, 44px, 0);
+  }
+
+  5% {
+    clip: rect(12px, 9999px, 59px, 0);
+  }
+
+  10% {
+    clip: rect(48px, 9999px, 29px, 0);
+  }
+
+  15% {
+    clip: rect(42px, 9999px, 73px, 0);
+  }
+
+  20% {
+    clip: rect(63px, 9999px, 27px, 0);
+  }
+
+  25% {
+    clip: rect(34px, 9999px, 55px, 0);
+  }
+
+  30% {
+    clip: rect(86px, 9999px, 73px, 0);
+  }
+
+  35% {
+    clip: rect(20px, 9999px, 20px, 0);
+  }
+
+  40% {
+    clip: rect(26px, 9999px, 60px, 0);
+  }
+
+  45% {
+    clip: rect(25px, 9999px, 66px, 0);
+  }
+
+  50% {
+    clip: rect(57px, 9999px, 98px, 0);
+  }
+
+  55% {
+    clip: rect(5px, 9999px, 46px, 0);
+  }
+
+  60% {
+    clip: rect(82px, 9999px, 31px, 0);
+  }
+
+  65% {
+    clip: rect(54px, 9999px, 27px, 0);
+  }
+
+  70% {
+    clip: rect(28px, 9999px, 99px, 0);
+  }
+
+  75% {
+    clip: rect(45px, 9999px, 69px, 0);
+  }
+
+  80% {
+    clip: rect(23px, 9999px, 85px, 0);
+  }
+
+  85% {
+    clip: rect(54px, 9999px, 84px, 0);
+  }
+
+  90% {
+    clip: rect(45px, 9999px, 47px, 0);
+  }
+
+  95% {
+    clip: rect(37px, 9999px, 20px, 0);
+  }
+
+  100% {
+    clip: rect(4px, 9999px, 91px, 0);
+  }
 }
 
 @keyframes glitch-anim2 {
-  0% { clip: rect(65px, 9999px, 100px, 0); }
-  5% { clip: rect(52px, 9999px, 74px, 0); }
-  10% { clip: rect(79px, 9999px, 85px, 0); }
-  15% { clip: rect(75px, 9999px, 5px, 0); }
-  20% { clip: rect(67px, 9999px, 61px, 0); }
-  25% { clip: rect(14px, 9999px, 79px, 0); }
-  30% { clip: rect(1px, 9999px, 66px, 0); }
-  35% { clip: rect(86px, 9999px, 30px, 0); }
-  40% { clip: rect(23px, 9999px, 98px, 0); }
-  45% { clip: rect(85px, 9999px, 72px, 0); }
-  50% { clip: rect(71px, 9999px, 75px, 0); }
-  55% { clip: rect(2px, 9999px, 48px, 0); }
-  60% { clip: rect(30px, 9999px, 16px, 0); }
-  65% { clip: rect(59px, 9999px, 50px, 0); }
-  70% { clip: rect(41px, 9999px, 62px, 0); }
-  75% { clip: rect(2px, 9999px, 82px, 0); }
-  80% { clip: rect(47px, 9999px, 73px, 0); }
-  85% { clip: rect(3px, 9999px, 27px, 0); }
-  90% { clip: rect(26px, 9999px, 55px, 0); }
-  95% { clip: rect(42px, 9999px, 97px, 0); }
-  100% { clip: rect(38px, 9999px, 49px, 0); }
+  0% {
+    clip: rect(65px, 9999px, 100px, 0);
+  }
+
+  5% {
+    clip: rect(52px, 9999px, 74px, 0);
+  }
+
+  10% {
+    clip: rect(79px, 9999px, 85px, 0);
+  }
+
+  15% {
+    clip: rect(75px, 9999px, 5px, 0);
+  }
+
+  20% {
+    clip: rect(67px, 9999px, 61px, 0);
+  }
+
+  25% {
+    clip: rect(14px, 9999px, 79px, 0);
+  }
+
+  30% {
+    clip: rect(1px, 9999px, 66px, 0);
+  }
+
+  35% {
+    clip: rect(86px, 9999px, 30px, 0);
+  }
+
+  40% {
+    clip: rect(23px, 9999px, 98px, 0);
+  }
+
+  45% {
+    clip: rect(85px, 9999px, 72px, 0);
+  }
+
+  50% {
+    clip: rect(71px, 9999px, 75px, 0);
+  }
+
+  55% {
+    clip: rect(2px, 9999px, 48px, 0);
+  }
+
+  60% {
+    clip: rect(30px, 9999px, 16px, 0);
+  }
+
+  65% {
+    clip: rect(59px, 9999px, 50px, 0);
+  }
+
+  70% {
+    clip: rect(41px, 9999px, 62px, 0);
+  }
+
+  75% {
+    clip: rect(2px, 9999px, 82px, 0);
+  }
+
+  80% {
+    clip: rect(47px, 9999px, 73px, 0);
+  }
+
+  85% {
+    clip: rect(3px, 9999px, 27px, 0);
+  }
+
+  90% {
+    clip: rect(26px, 9999px, 55px, 0);
+  }
+
+  95% {
+    clip: rect(42px, 9999px, 97px, 0);
+  }
+
+  100% {
+    clip: rect(38px, 9999px, 49px, 0);
+  }
 }
 
 /* Efeito de distorção digital */
@@ -144,19 +290,22 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(0, 255, 255, 0.1) 50%,
-    transparent 100%
-  );
+  background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(0, 255, 255, 0.1) 50%,
+      transparent 100%);
   animation: scan 2s linear infinite;
   pointer-events: none;
 }
 
 @keyframes scan {
-  0% { transform: translateY(-100%); }
-  100% { transform: translateY(100%); }
+  0% {
+    transform: translateY(-100%);
+  }
+
+  100% {
+    transform: translateY(100%);
+  }
 }
 
 /* Ajustar estilos base para usar variáveis */
@@ -170,7 +319,12 @@ body {
   font-family: var(--font-main);
 }
 
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
   font-family: var(--font-display);
   color: var(--color-renegade-cyan);
   text-shadow: 0 0 10px var(--color-renegade-glow);
@@ -231,8 +385,15 @@ button.renegade:hover {
 }
 
 @keyframes glitch-pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.05); }
+
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.05);
+  }
 }
 
 button:disabled {
@@ -330,23 +491,26 @@ a:hover::after {
   left: 0;
   right: 0;
   bottom: 0;
-  background: 
+  background:
     linear-gradient(90deg, transparent 0%, rgba(0, 238, 255, 0.05) 50%, transparent 100%),
-    repeating-linear-gradient(
-      0deg,
+    repeating-linear-gradient(0deg,
       transparent,
       transparent 2px,
       rgba(255, 0, 255, 0.1) 2px,
-      rgba(255, 0, 255, 0.1) 4px
-    );
+      rgba(255, 0, 255, 0.1) 4px);
   pointer-events: none;
   z-index: 1;
   animation: data-flow 3s linear infinite;
 }
 
 @keyframes data-flow {
-  0% { background-position: 0% 0%; }
-  100% { background-position: 100% 100%; }
+  0% {
+    background-position: 0% 0%;
+  }
+
+  100% {
+    background-position: 100% 100%;
+  }
 }
 
 /* Container principal do jogo */
@@ -365,16 +529,19 @@ a:hover::after {
   left: 0;
   right: 0;
   bottom: 0;
-  background: 
+  background:
     url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" opacity="0.05"><filter id="noise"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="1" stitchTiles="stitch"/></filter><rect width="100%" height="100%" filter="url(%23noise)"/></svg>');
   pointer-events: none;
   z-index: 2;
 }
+
 @keyframes modalFadeIn {
   from {
     opacity: 0;
-    transform: translate(-50%, -50%) scale(0.95); /* Assume que o modal usa translate -50%, -50% */
+    transform: translate(-50%, -50%) scale(0.95);
+    /* Assume que o modal usa translate -50%, -50% */
   }
+
   to {
     opacity: 1;
     transform: translate(-50%, -50%) scale(1);
@@ -388,28 +555,34 @@ a:hover::after {
 
 /* Adaptação para modais que não usam translate -50%, -50% (ex: Skills Manager na coluna da direita) */
 @keyframes modalSimpleFadeIn {
-   from {
-     opacity: 0;
-   }
-   to {
-     opacity: 1;
-   }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
+
 .simple-fade-in {
   animation: modalSimpleFadeIn 0.3s ease-out forwards;
 }
+
 /* --- Barra de Ações Principal --- */
 .game-action-bar {
   position: fixed;
   bottom: 0;
   left: 0;
   width: 100%;
-  z-index: 80; /* Abaixo do chat (90) e modais (1000) */
-  opacity: 0.7; /* Semi-transparente por defeito */
+  z-index: 80;
+  /* Abaixo do chat (90) e modais (1000) */
+  opacity: 0.7;
+  /* Semi-transparente por defeito */
   transition: opacity 0.3s ease;
-  
+
   display: flex;
-  justify-content: center; /* Centraliza os botões */
+  justify-content: center;
+  /* Centraliza os botões */
   align-items: center;
   padding: 10px 15px;
   background-color: var(--color-renegade-bg-transparent);
@@ -420,7 +593,8 @@ a:hover::after {
 }
 
 .game-action-bar:hover {
-  opacity: 1; /* Opacidade total no hover */
+  opacity: 1;
+  /* Opacidade total no hover */
 }
 
 .action-bar-button {
@@ -428,7 +602,7 @@ a:hover::after {
   font-family: var(--font-main);
   cursor: pointer;
   border: 1px solid var(--color-border);
-  background-color: rgba(0,0,0,0.3);
+  background-color: rgba(0, 0, 0, 0.3);
   color: var(--color-renegade-text);
   border-radius: 4px;
   font-size: 0.9em;
@@ -462,10 +636,11 @@ a:hover::after {
   justify-content: center;
   font-weight: bold;
 }
+
 /* --- Animação de Transição de UI (Prólogo) --- */
 .ui-glitch-transition {
   /* Força a animação a ficar por cima de tudo */
-  z-index: 9998 !important; 
+  z-index: 9998 !important;
   animation: ui-glitch-effect 1.2s ease-out forwards;
 }
 
@@ -476,44 +651,52 @@ a:hover::after {
     filter: brightness(1);
     box-shadow: 0 0 5px var(--color-citadel-glow), inset 0 0 5px var(--color-citadel-glow);
   }
+
   20% {
     opacity: 0.8;
     filter: brightness(3) contrast(3);
     transform: skewX(10deg) translateX(20px);
     box-shadow: 0 0 20px var(--color-renegade-magenta), inset 0 0 20px var(--color-renegade-magenta);
   }
+
   40% {
     opacity: 1;
     filter: brightness(0.5);
     transform: skewX(-10deg) translateX(-20px);
     box-shadow: 0 0 10px var(--color-renegade-cyan), inset 0 0 10px var(--color-renegade-cyan);
   }
+
   60% {
     opacity: 0.6;
     filter: brightness(5) saturate(5);
     transform: scale(1.05);
     box-shadow: 0 0 30px var(--color-renegade-glow), inset 0 0 30px var(--color-renegade-glow);
   }
+
   80% {
     opacity: 1;
     transform: scale(1);
     filter: brightness(1.5);
     box-shadow: none;
   }
+
   100% {
     opacity: 1;
     filter: brightness(1);
     box-shadow: none;
   }
 }
+
 /* --- Barra de Ações Principal --- */
 .game-action-bar {
   position: fixed;
   bottom: 0;
   left: 0;
   width: 100%;
-  z-index: 80; /* Abaixo do chat (90) e modais (1000) */
-  opacity: 0.7; /* Semi-transparente por defeito */
+  z-index: 80;
+  /* Abaixo do chat (90) e modais (1000) */
+  opacity: 0.7;
+  /* Semi-transparente por defeito */
   transition: opacity 0.3s ease;
 
   display: flex;
@@ -528,7 +711,8 @@ a:hover::after {
 }
 
 .game-action-bar:hover {
-  opacity: 1; /* Opacidade total no hover */
+  opacity: 1;
+  /* Opacidade total no hover */
 }
 
 .action-bar-button {
@@ -536,7 +720,7 @@ a:hover::after {
   font-family: var(--font-main);
   cursor: pointer;
   border: 1px solid var(--color-border);
-  background-color: rgba(0,0,0,0.3);
+  background-color: rgba(0, 0, 0, 0.3);
   color: var(--color-renegade-text);
   border-radius: 4px;
   font-size: 0.9em;
@@ -555,6 +739,186 @@ a:hover::after {
   box-shadow: 0 0 8px var(--color-renegade-glow);
 }
 
+/* --- Global Scrollbar Styling --- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #050510;
+  border-left: 1px solid #222;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border: 1px solid #444;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-renegade-cyan);
+  box-shadow: 0 0 5px var(--color-renegade-cyan);
+}
+
+/* --- CRT / Scanline Overlay --- */
+.crt-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 9999;
+  background:
+    linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%),
+    linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+  background-size: 100% 2px, 3px 100%;
+  animation: crt-flicker 0.15s infinite;
+  opacity: 0.15;
+}
+
+@keyframes crt-flicker {
+  0% {
+    opacity: 0.15;
+  }
+
+  50% {
+    opacity: 0.12;
+  }
+
+  100% {
+    opacity: 0.15;
+  }
+}
+
+/* --- Screen Flicker (Low Voltage) --- */
+.screen-flicker {
+  animation: screen-flicker-anim 5s infinite;
+}
+
+@keyframes screen-flicker-anim {
+  0% {
+    opacity: 1;
+  }
+
+  96% {
+    opacity: 1;
+  }
+
+  97% {
+    opacity: 0.95;
+  }
+
+  98% {
+    opacity: 1;
+  }
+
+  99% {
+    opacity: 0.98;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+/* --- MiniMap & Radar --- */
+.minimap-container {
+  width: 100%;
+  aspect-ratio: 1;
+  background: radial-gradient(circle, rgba(0, 20, 30, 0.8) 0%, rgba(0, 0, 0, 0.95) 100%);
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  /* Radar Circular */
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 20px;
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.1);
+}
+
+.minimap-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: 1fr 1fr 1fr;
+  width: 80%;
+  height: 80%;
+  position: absolute;
+  top: 10%;
+  left: 10%;
+  gap: 2px;
+}
+
+.minimap-center {
+  grid-row: 2;
+  grid-column: 2;
+  background: rgba(0, 255, 255, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.player-dot {
+  width: 6px;
+  height: 6px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 5px #fff;
+  z-index: 2;
+}
+
+.entity-dot {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  animation: pulse 1s infinite;
+}
+
+.npc-dot {
+  background: var(--color-warning);
+  top: 25%;
+  right: 25%;
+}
+
+.player-other-dot {
+  background: var(--color-success);
+  bottom: 25%;
+  left: 25%;
+}
+
+.radar-sweep {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: conic-gradient(from 0deg, transparent 0deg, rgba(0, 255, 255, 0.1) 60deg, rgba(0, 255, 255, 0.4) 90deg, transparent 90deg);
+  border-radius: 50%;
+  animation: radar-spin 3s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes radar-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.minimap-border {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px dashed rgba(0, 255, 255, 0.2);
+  box-shadow: inset 0 0 20px rgba(0, 10, 20, 0.8);
+  pointer-events: none;
+}
+
+/* --- Existing Styles --- */
 .action-button-notify {
   position: absolute;
   top: -5px;
@@ -569,5 +933,5 @@ a:hover::after {
   align-items: center;
   justify-content: center;
   font-weight: bold;
-  animation: pulse 1.5s infinite; /* Usa a animação pulse */
+  animation: pulse 1.5s infinite;
 }

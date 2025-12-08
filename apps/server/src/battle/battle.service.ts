@@ -28,7 +28,7 @@ import {
 } from 'src/game/types/socket-with-auth.type';
 import { CharacterStatsService } from 'src/character-stats/character-stats.service';
 import { SkillService } from 'src/skill/skill.service';
-import { Prisma, Skill, CharacterClass } from '@prisma/client';
+import { Prisma, Skill, CharacterClass, NPCTemplate } from '@prisma/client';
 import { JsonValue } from '@prisma/client/runtime/library';
 import * as crypto from 'crypto';
 import { EcoService } from 'src/eco/eco.service';
@@ -131,7 +131,7 @@ export class BattleService {
     private characterStatsService: CharacterStatsService,
     private skillService: SkillService,
     private ecoService: EcoService,
-  ) {}
+  ) { }
 
   // --- FUNÇÃO HELPER PARA CALCULAR STATS MODIFICADOS ---
   private getModifiedStats(
@@ -543,6 +543,7 @@ export class BattleService {
   async initializeCombat(
     player: UserPayload,
     monsterTemplateId: string,
+    monsterInstanceId?: string, // Opcional: ID da Instância específica
   ): Promise<CombatInstance | null> {
     if (!player.character) return null;
     if (this.activeCombats.has(player.character.id)) {
@@ -552,9 +553,26 @@ export class BattleService {
       return this.activeCombats.get(player.character.id) ?? null;
     }
 
-    const monsterTemplate = await this.prisma.nPCTemplate.findUnique({
-      where: { id: monsterTemplateId, isHostile: true },
-    });
+    // Lógica Híbrida: Instance-First ou Template-First
+    let monsterTemplate: NPCTemplate | null = null;
+
+    if (monsterInstanceId) {
+      const instance = await this.prisma.nPCInstance.findUnique({
+        where: { id: monsterInstanceId },
+        include: { template: true }
+      });
+      if (instance && instance.template?.isHostile) {
+        monsterTemplate = instance.template;
+      }
+    }
+
+    // Se não achou por instância, tenta por Template direto (Legado/Genérico)
+    if (!monsterTemplate) {
+      monsterTemplate = await this.prisma.nPCTemplate.findUnique({
+        where: { id: monsterTemplateId, isHostile: true },
+      });
+    }
+
     if (!monsterTemplate || !monsterTemplate.isHostile) return null;
 
     const stats = monsterTemplate.stats as any;
@@ -567,6 +585,7 @@ export class BattleService {
       playerHp: player.character.hp,
       playerMaxHp: player.character.maxHp,
       monsterTemplate: monsterTemplate,
+      monsterInstanceId: monsterInstanceId, // Salvamos o ID da instância para remoção posterior
       monsterHp: monsterMaxHp,
       monsterMaxHp: monsterMaxHp,
       lastAction: Date.now(),
@@ -578,7 +597,7 @@ export class BattleService {
 
     this.activeCombats.set(player.character.id, newCombat);
     console.log(
-      `[BattleService] Combate iniciado para ${player.character.id} contra ${monsterTemplate.name}, Turno ${newCombat.turn}`,
+      `[BattleService] Combate iniciado para ${player.character.id} contra ${monsterTemplate.name} (Inst: ${monsterInstanceId ?? 'TemplateOnly'}), Turno ${newCombat.turn}`,
     );
     return newCombat;
   }
@@ -1134,9 +1153,9 @@ export class BattleService {
 
               const effectivenessInfo =
                 (damageEffect.bonusVsType?.length ?? 0 > 0) &&
-                defenderTypes.some((type) =>
-                  damageEffect.bonusVsType?.includes(type),
-                )
+                  defenderTypes.some((type) =>
+                    damageEffect.bonusVsType?.includes(type),
+                  )
                   ? ' (Eficaz!)'
                   : '';
 
@@ -1312,7 +1331,7 @@ export class BattleService {
     const xpGanho = monsterStats.xp ?? 50;
     const goldGanho = Math.floor(
       Math.random() * (monsterStats.goldMax - monsterStats.goldMin + 1) +
-        monsterStats.goldMin,
+      monsterStats.goldMin,
     );
     console.log(
       `[BattleService] Recompensas calculadas: ${xpGanho} XP, ${goldGanho} Ouro`,
@@ -1326,7 +1345,7 @@ export class BattleService {
         if (Math.random() < (dropInfo.chance ?? 0)) {
           const quantity = Math.floor(
             Math.random() * (dropInfo.maxQty - dropInfo.minQty + 1) +
-              dropInfo.minQty,
+            dropInfo.minQty,
           );
           const itemTemplate = await this.prisma.item.findUnique({
             where: { id: dropInfo.itemId },
@@ -1438,6 +1457,16 @@ export class BattleService {
             });
           }
         }
+
+        // 4. Remover a Instância do NPC do Mundo (Morte)
+        // Se temos o ID da instância (definido no initializeCombat), deletamos ela.
+        if (combat.monsterInstanceId) {
+          await tx.nPCInstance.deleteMany({
+            where: { id: combat.monsterInstanceId }
+          });
+          console.log(`[BattleService] NPC Instance removida: ${combat.monsterInstanceId}`);
+        }
+
         transactionSuccess = true;
       });
     } catch (error) {

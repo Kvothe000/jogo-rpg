@@ -17,7 +17,7 @@ export class InventoryService {
   constructor(
     private prisma: PrismaService,
     private eventEmitter: EventEmitter2,
-  ) {}
+  ) { }
 
   /**
    * Busca os slots de inventário de um personagem, incluindo os detalhes do item.
@@ -40,8 +40,8 @@ export class InventoryService {
       itemId: slot.item.id,
       itemName: slot.item.name,
       itemDescription: slot.item.description,
-      itemType: slot.item.type,
-      itemSlot: slot.item.slot,
+      itemType: slot.item.type as any, // Cast necessário pois mudamos o tipo do socket para string literal
+      itemSlot: slot.item.slot as any,
       quantity: slot.quantity,
       isEquipped: slot.isEquipped,
     }));

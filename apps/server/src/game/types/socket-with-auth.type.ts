@@ -1,9 +1,30 @@
 import { Socket } from 'socket.io';
 import type { UserPayload } from 'src/auth/types/user-payload.type';
 import { CombatUpdatePayload } from 'src/battle/types/combat.type';
-import { ItemType, EquipSlot, PowerKeyword, Skill } from '@prisma/client';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { types } from 'util';
+
+// --- DEFINIÇÕES LOCAIS PARA COMPATIBILIDADE (Client-Side Safe) ---
+export type ItemType = 'EQUIPMENT' | 'CONSUMABLE' | 'QUEST_ITEM' | 'MATERIAL';
+
+export type EquipSlot = 'WEAPON' | 'ARMOR' | 'HELMET' | 'BOOTS' | 'ACCESSORY';
+
+export interface PowerKeyword {
+  id: string;
+  name: string;
+  description: string;
+  rank: string;
+}
+
+export interface Skill {
+  id: string;
+  name: string;
+  description: string;
+  ecoCost: number;
+  effectData: any;
+  // Adicione outros campos se necessário
+}
+// -----------------------------------------------------------------
 
 // --- PAYLOAD TYPES ---
 
@@ -38,6 +59,7 @@ interface ClientToServerEvents {
   combatUseSkill: (payload: { skillId: string }) => void;
   prologueInteract: (payload: { targetId?: string }) => void; // Interagir com terminal, duto, etc.
   prologueChoice: (payload: { choiceId: string }) => void;
+  requestQuests: () => void; // NOVO
 }
 
 // 2. Usamos 'Record<string, never>'
@@ -79,6 +101,8 @@ interface ServerToClientEvents {
   }) => void;
   playerBaseStatsUpdated: (payload: BaseStatsPayload) => void; // <-- NOVO EVENTO
   prologueUpdate: (payload: PrologueUpdatePayload) => void;
+  updateQuests: (payload: { quests: any[] }) => void; // NOVO
+  playSfx: (sfxName: string) => void;
 }
 
 // 3. Usamos 'Record<string, never>'

@@ -28,6 +28,7 @@ model Character {
   name         String    @unique
   createdAt    DateTime  @default(now())
   prologueState String    @default("NOT_STARTED")
+  prologueData  Json      @default("{}") // Armazena escolhas do prólogo (ex: affinity: "ECO" | "DIGITAL")
   // --- Atributos Principais ---
   level        Int       @default(1)
   xp           BigInt    @default(0) // BigInt para números grandes

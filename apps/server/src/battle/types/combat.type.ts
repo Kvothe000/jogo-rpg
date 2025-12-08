@@ -22,6 +22,7 @@ export interface CombatInstance {
   playerHp: number;
   playerMaxHp: number;
   monsterTemplate: NPCTemplate;
+  monsterInstanceId?: string; // ID da instância específica (para remoção)
   monsterHp: number;
   monsterMaxHp: number;
   lastAction: number;

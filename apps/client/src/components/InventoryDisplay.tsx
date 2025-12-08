@@ -10,128 +10,106 @@ interface InventoryDisplayProps {
 export function InventoryDisplay({ slots, onClose }: InventoryDisplayProps) { // ADICIONADO
   const { socket } = useSocket();
 
-  // Estilos atualizados para o modal
+  // Estilos atualizados para o painel embutido (RightPanel)
   const styles = {
     container: {
-      position: 'fixed' as const,
-      top: '50%',
-      left: '50%',
-      transform: 'translate(-50%, -50%)',
-      zIndex: 1000,
-      maxHeight: '80vh',
-      width: '90%',
-      maxWidth: '600px',
-      overflowY: 'auto' as const,
-      border: '1px solid var(--color-border)',
-      padding: '20px',
-      backgroundColor: 'var(--color-citadel-primary)',
-      borderRadius: '8px',
-      boxShadow: '0 0 30px var(--color-renegade-glow)',
+      width: '100%',
+      height: '100%',
+      // overflowY: 'auto' as const, // Gerenciado pelo pai
+      display: 'flex',
+      flexDirection: 'column' as const,
+      gap: '10px',
     },
     header: {
+      fontSize: '0.9em',
       color: 'var(--color-renegade-cyan)',
-      fontFamily: 'var(--font-display)',
-      textShadow: '0 0 8px var(--color-renegade-cyan)',
-      marginBottom: '20px',
-      textAlign: 'center' as const,
-      fontSize: '1.4em',
-      borderBottom: '2px solid var(--color-renegade-cyan)',
-      paddingBottom: '10px'
+      borderBottom: '1px solid var(--color-border)',
+      paddingBottom: '5px',
+      marginBottom: '10px',
+      textTransform: 'uppercase' as const,
+      letterSpacing: '1px',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center'
     },
     emptyMessage: {
       color: 'var(--color-citadel-text)',
       fontStyle: 'italic',
       opacity: 0.7,
       textAlign: 'center' as const,
-      padding: '40px 20px',
-      fontSize: '1.1em'
+      padding: '20px 0',
+      fontSize: '0.9em'
     },
     itemList: {
       listStyle: 'none',
       padding: 0,
-      margin: 0
+      margin: 0,
+      display: 'flex',
+      flexDirection: 'column' as const,
+      gap: '8px'
     },
     item: {
-      marginBottom: '15px',
-      borderBottom: '1px dashed var(--color-border)',
-      padding: '15px',
-      backgroundColor: 'rgba(0,0,0,0.3)',
-      borderRadius: '6px',
-      transition: 'all 0.3s ease'
+      border: '1px solid rgba(255,255,255,0.05)',
+      padding: '8px',
+      backgroundColor: 'rgba(0,0,0,0.2)',
+      borderRadius: '4px',
     },
     itemName: {
       fontWeight: 'bold',
-      color: 'var(--color-citadel-text)',
-      fontSize: '1em',
+      color: '#ddd',
+      fontSize: '0.9em',
       display: 'block',
-      marginBottom: '5px'
+      marginBottom: '2px'
     },
     quantity: {
       color: 'var(--color-warning)',
-      marginLeft: '8px',
-      fontSize: '0.9em'
+      marginLeft: '5px',
+      fontSize: '0.85em'
     },
     equipped: {
-      marginLeft: '10px',
+      display: 'block',
+      marginTop: '2px',
       color: 'var(--color-success)',
-      fontSize: '0.8em',
+      fontSize: '0.75em',
       fontWeight: 'bold'
     },
     description: {
-      fontSize: '0.85em',
-      margin: '8px 0 0 0',
-      color: 'var(--color-citadel-text)',
-      opacity: 0.9,
-      lineHeight: '1.4'
+      fontSize: '0.75em',
+      margin: '4px 0 0 0',
+      color: '#aaa',
+      lineHeight: '1.3'
     },
-    equipButton: {
-      marginLeft: '15px',
-      padding: '6px 12px',
+    actionButton: {
+      marginTop: '6px',
+      width: '100%',
+      padding: '4px',
       fontSize: '0.8em',
       cursor: 'pointer',
-      color: 'white',
-      border: 'none',
-      borderRadius: '4px',
-      fontFamily: 'var(--font-main)',
-      transition: 'all 0.3s ease',
-      boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
+      border: '1px solid var(--color-border)',
+      background: 'rgba(255,255,255,0.05)',
+      color: '#fff',
+      fontFamily: 'var(--font-mono)',
     },
-    useButton: {
-      marginLeft: '15px',
-      padding: '6px 12px',
-      fontSize: '0.8em',
+    backButton: {
+      background: 'none',
+      border: '1px solid var(--color-border)',
+      color: 'var(--color-text)',
       cursor: 'pointer',
-      color: 'black',
-      border: 'none',
-      borderRadius: '4px',
-      fontFamily: 'var(--font-main)',
-      transition: 'all 0.3s ease',
-      boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
-    },
-    closeButton: {
-      position: 'absolute' as const,
-      top: '12px',
-      right: '12px',
-      padding: '6px 10px',
       fontSize: '0.8em',
-      cursor: 'pointer',
-      border: '1px solid var(--color-danger)',
-      color: 'var(--color-danger)',
-      backgroundColor: 'rgba(0,0,0,0.3)',
-      borderRadius: '4px',
-      transition: 'all 0.3s ease',
+      padding: '2px 6px',
+      fontFamily: 'var(--font-mono)'
     }
   };
 
   if (!slots || slots.length === 0) {
     return (
-      <div style={styles.container} className="theme-renegade data-overlay modal-enter-animation">
-        <button onClick={onClose} style={styles.closeButton}>
-          ❌ Fechar
-        </button>
-        <h4 style={styles.header}>INVENTÁRIO</h4>
+      <div style={styles.container} className="simple-fade-in">
+        <div style={styles.header}>
+          <span>Inventário</span>
+          <button onClick={onClose} style={styles.backButton}> VOLTAR</button>
+        </div>
         <p style={styles.emptyMessage}>
-          Inventário vazio.
+          Vazio.
         </p>
       </div>
     );
@@ -164,66 +142,41 @@ export function InventoryDisplay({ slots, onClose }: InventoryDisplayProps) { //
   };
 
   return (
-    <div style={styles.container} className="theme-renegade data-overlay modal-enter-animation">
-      <button onClick={onClose} style={styles.closeButton}>
-        ❌ Fechar
-      </button>
-      <h4 style={styles.header}>
-        INVENTÁRIO
-      </h4>
+    <div style={styles.container} className="simple-fade-in">
+      <div style={styles.header}>
+        <span>Inventário</span>
+        <button onClick={onClose} style={styles.backButton}> VOLTAR</button>
+      </div>
+
       <ul style={styles.itemList}>
         {slots.map((slot) => (
           <li key={slot.slotId} style={styles.item}>
             <div>
               <span style={styles.itemName}>{slot.itemName}</span>
-              <span style={styles.quantity}> (x{slot.quantity})</span>
+              <span style={styles.quantity}>x{slot.quantity}</span>
               {slot.isEquipped && (
                 <span style={styles.equipped}>
-                  ⚡ EQUIPADO - {slot.itemSlot}
+                  [EQUIPADO]
                 </span>
               )}
 
-              {/* Botão Equipar/Desequipar para Equipamentos */}
+              {/* Botão Equipar/Desequipar */}
               {slot.itemType === 'EQUIPMENT' && slot.itemSlot && (
                 <button
                   onClick={() => handleEquipToggle(slot.slotId, slot.isEquipped)}
-                  style={{
-                    ...styles.equipButton,
-                    background: slot.isEquipped ? 
-                      'linear-gradient(135deg, var(--color-citadel-secondary) 0%, var(--color-citadel-accent) 100%)' : 
-                      'linear-gradient(135deg, var(--color-renegade-purple) 0%, var(--color-renegade-magenta) 100%)',
-                  }}
-                  onMouseOver={(e) => {
-                    e.currentTarget.style.boxShadow = '0 0 15px var(--color-renegade-magenta)';
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                  }}
-                  onMouseOut={(e) => {
-                    e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
-                    e.currentTarget.style.transform = 'translateY(0)';
-                  }}
+                  style={styles.actionButton}
                 >
-                  {slot.isEquipped ? '❌ Desequipar' : '⚡ Equipar'}
+                  {slot.isEquipped ? 'Desequipar' : 'Equipar'}
                 </button>
               )}
 
-              {/* Botão Usar para Consumíveis */}
+              {/* Botão Usar */}
               {slot.itemType === 'CONSUMABLE' && (
                 <button
                   onClick={() => handleUseItem(slot.slotId)}
-                  style={{
-                    ...styles.useButton,
-                    background: 'linear-gradient(135deg, var(--color-success) 0%, #8fbc8f 100%)',
-                  }}
-                  onMouseOver={(e) => { 
-                    e.currentTarget.style.boxShadow = '0 0 15px var(--color-success)';
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                  }}
-                  onMouseOut={(e) => { 
-                    e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
-                    e.currentTarget.style.transform = 'translateY(0)';
-                  }}
+                  style={styles.actionButton}
                 >
-                  🧪 Usar
+                  Usar
                 </button>
               )}
             </div>
