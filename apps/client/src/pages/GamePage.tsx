@@ -345,6 +345,7 @@ export function GamePage() {
     // Level Up Tracking
     const prevLevelRef = useRef(user?.character?.level ?? 1);
     const [showLevelUp, setShowLevelUp] = useState(false);
+    const [isGlitching, setIsGlitching] = useState(false); // NOVO: Estado de Glitch
 
     useEffect(() => {
         if (!user?.character) return;
@@ -392,6 +393,11 @@ export function GamePage() {
         // --- LISTENERS DO PRÓLOGO ---
         const handlePrologueUpdate = (payload: PrologueUpdatePayload) => {
             console.log('[Socket] Recebido prologueUpdate:', payload);
+            if (payload.message && payload.message.includes('[GLITCH]')) {
+                setIsGlitching(true);
+                setTimeout(() => setIsGlitching(false), 2000);
+                playSfx('glitch'); // Assumes sound exists or fallback
+            }
             setPrologueData(payload);
         };
         const handleProfileUpdate = (payload: any) => {
@@ -430,7 +436,13 @@ export function GamePage() {
                 }
             });
         };
-        const handleServerMessage = (message: string) => toast(message, { icon: 'ℹ️' });
+        const handleServerMessage = (message: string) => {
+            if (message.includes('[GLITCH]')) {
+                setIsGlitching(true);
+                setTimeout(() => setIsGlitching(false), 2000);
+            }
+            toast(message, { icon: 'ℹ️' });
+        };
 
         const handleCombatStarted = (payload: CombatStartedPayload) => {
             const currentUser = userRef.current;
@@ -748,7 +760,7 @@ export function GamePage() {
                 game-container
                 digital-noise
                 ${uiTheme === 'renegade' ? 'theme-renegade' : 'theme-citadel'}
-                ${isTransitioningUI ? 'ui-glitch-transition' : ''}
+                ${isTransitioningUI || isGlitching ? 'ui-glitch-transition' : ''}
             `}
             style={styles.containerStyle}
         >

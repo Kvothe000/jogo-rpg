@@ -190,7 +190,7 @@ export class PrologueService {
 
             if (choiceId === 'ENTER_PORTAL') {
                 targetRoom = 'td_room_01_entrance'; // Leads to Tutorial Dungeon
-                endMessage = 'Prólogo Finalizado via Portal.';
+                endMessage = '>> SISTEMA: ATENÇÃO! DUNGEON RANK F DETECTADA. <<\n\n[GLITCH] A realidade se fragmenta ao seu redor...';
             } else if (choiceId === 'CAUGHT_CITADEL') {
                 targetRoom = 'cl_hallway_01';
                 endMessage = 'Você foi capturado pela Cidadela.';

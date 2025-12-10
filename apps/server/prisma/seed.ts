@@ -16,6 +16,12 @@ const ITEM_SMALL_STONE = 'item_pedra_pequena';
 const GOBLIN_RALE_ID = 'mon_goblin_peon';
 const SKELETON_ID = 'mon_skeleton_fragile';
 const ORC_SCOUT_ID = 'mon_orc_scout';
+const THUG_WEAK_ID = 'mon_thug_weak'; // NOVO
+// --- IDS SECTOR 7 ---
+const ROOM_ID_SECTOR_7_PLAZA = 'cl_sector_7_plaza';
+const ROOM_ID_BLACK_MARKET = 'cl_black_market';
+const ROOM_ID_BACK_ALLEY = 'cl_back_alley';
+const NPC_MERCHANT_SECTOR7 = 'npc_merchant_sector7';
 // --- FIM DOS IDs ---
 // --- IDs PARA KEYWORDS ---
 const KW_LAMINA = 'kw_lamina';
@@ -63,37 +69,106 @@ async function main() {
   await prisma.gameMap.upsert({
     where: { id: ROOM_ID_START },
     update: {
+      name: 'Refúgio dos Renegados',
+      description:
+        'O ar é denso com o cheiro de ozônio e esperança desesperada. Cabos de dados pendem do teto como vinhas cibernéticas, pulsando com luz suave. Servidores improvisados zumbem nos cantos, abafando os sussurros dos rebeldes que planejam o próximo passo contra a Cidadela.',
       exits: {
         norte: ROOM_ID_HALLWAY,
       },
     },
     create: {
       id: ROOM_ID_START,
-      name: 'Ponto de Partida',
+      name: 'Refúgio dos Renegados',
       description:
-        'Um espaço silencioso e empoeirado. À sua frente, um portal quebrado emite uma luz fraca. Ao NORTE, você vê a arcada de um corredor escuro.',
+        'O ar é denso com o cheiro de ozônio e esperança desesperada. Cabos de dados pendem do teto como vinhas cibernéticas, pulsando com luz suave. Servidores improvisados zumbem nos cantos, abafando os sussurros dos rebeldes que planejam o próximo passo contra a Cidadela.',
       exits: {
         norte: ROOM_ID_HALLWAY,
       },
     },
   });
-  console.log('Sala inicial criada/atualizada.');
+  console.log('Sala inicial (Refúgio) criada/atualizada.');
 
   // --- 2. Criar a Segunda Sala ---
   await prisma.gameMap.upsert({
     where: { id: ROOM_ID_HALLWAY },
-    update: {},
-    create: {
-      id: ROOM_ID_HALLWAY,
-      name: 'Corredor da Cidadela',
+    update: {
+      name: 'Túneis de Acesso Zeta',
       description:
-        'Um corredor frio de pedra. A luz da Cidadela mal penetra aqui. O ar está pesado. A única saída visível é de volta ao Ponto de Partida, ao SUL.',
+        'Uma rede labiríntica de tubulações enferrujadas e concreto úmido. O som de água gotejando ecoa na escuridão, misturado ao zumbido distante das máquinas da superfície. Musgo bioluminescente cresce nas frestas, oferecendo a única luz nestes caminhos esquecidos.',
       exits: {
         sul: ROOM_ID_START,
+        norte: ROOM_ID_SECTOR_7_PLAZA,
+      },
+    },
+    create: {
+      id: ROOM_ID_HALLWAY,
+      name: 'Túneis de Acesso Zeta',
+      description:
+        'Uma rede labiríntica de tubulações enferrujadas e concreto úmido. O som de água gotejando ecoa na escuridão, misturado ao zumbido distante das máquinas da superfície. Musgo bioluminescente cresce nas frestas, oferecendo a única luz nestes caminhos esquecidos.',
+      exits: {
+        sul: ROOM_ID_START,
+        norte: ROOM_ID_SECTOR_7_PLAZA, // Conexão com Setor 7
       },
     },
   });
-  console.log('Segunda sala criada.');
+  console.log('Segunda sala criada e conectada ao Setor 7.');
+
+  // --- SECTOR 7 EXPANSION ---
+
+  // 3a. Praça do Setor 7 (HUB)
+  await prisma.gameMap.upsert({
+    where: { id: ROOM_ID_SECTOR_7_PLAZA },
+    update: {
+      name: 'Praça do Setor 7',
+      description: 'A cacofonia da cidade baixa atinge seus sentidos violentamente. Hologramas de publicidade falham e piscam em cores neon saturadas, refletindo nas poças de chuva ácida. Drones de vigilância pairam silenciosos sobre a multidão de ciborgues e párias que tentam sobreviver mais um dia sob a sombra da Cidadela.',
+    },
+    create: {
+      id: ROOM_ID_SECTOR_7_PLAZA,
+      name: 'Praça do Setor 7',
+      description: 'A cacofonia da cidade baixa atinge seus sentidos violentamente. Hologramas de publicidade falham e piscam em cores neon saturadas, refletindo nas poças de chuva ácida. Drones de vigilância pairam silenciosos sobre a multidão de ciborgues e párias que tentam sobreviver mais um dia sob a sombra da Cidadela.',
+      exits: {
+        sul: ROOM_ID_HALLWAY,
+        leste: ROOM_ID_BLACK_MARKET,
+        oeste: ROOM_ID_BACK_ALLEY,
+      }
+    }
+  });
+
+  // 3b. Mercado Clandestino
+  await prisma.gameMap.upsert({
+    where: { id: ROOM_ID_BLACK_MARKET },
+    update: {
+      name: 'Mercado Clandestino',
+      description: 'Um labirinto caótico de barracas de lona e quiosques de metal reciclado. O vapor de cozinhas de rua se mistura com o cheiro acre de solda eletrônica. Mercadores gritam ofertas de tech ilegal enquanto clientes encapuzados negociam em sussurros.',
+    },
+    create: {
+      id: ROOM_ID_BLACK_MARKET,
+      name: 'Mercado Clandestino',
+      description: 'Um labirinto caótico de barracas de lona e quiosques de metal reciclado. O vapor de cozinhas de rua se mistura com o cheiro acre de solda eletrônica. Mercadores gritam ofertas de tech ilegal enquanto clientes encapuzados negociam em sussurros.',
+      exits: {
+        oeste: ROOM_ID_SECTOR_7_PLAZA,
+      }
+    }
+  });
+
+  // 3c. Beco Sombrio (Combat Zone)
+  await prisma.gameMap.upsert({
+    where: { id: ROOM_ID_BACK_ALLEY },
+    update: {
+      name: 'Beco Sombrio',
+      description: 'Longe das luzes da praça, este beco é dominado pela escuridão e pelo perigo. O lixo tecnológico se acumula nos cantos, e olhos cibernéticos vermelhos observam das sombras. A única lei aqui é a força.',
+    },
+    create: {
+      id: ROOM_ID_BACK_ALLEY,
+      name: 'Beco Sombrio',
+      description: 'Longe das luzes da praça, este beco é dominado pela escuridão e pelo perigo. O lixo tecnológico se acumula nos cantos, e olhos cibernéticos vermelhos observam das sombras. A única lei aqui é a força.',
+      exits: {
+        leste: ROOM_ID_SECTOR_7_PLAZA,
+      }
+    }
+  });
+
+  console.log('Setor 7 criado (Praça, Mercado, Beco).');
 
   // --- 3. Criar Facções ---
   await prisma.faction.upsert({
@@ -714,7 +789,81 @@ async function main() {
     },
   });
 
-  console.log('Monstros criados/atualizados.');
+  // NOVO: Mercador Z-4 (Sector 7)
+  await prisma.nPCTemplate.upsert({
+    where: { id: NPC_MERCHANT_SECTOR7 },
+    update: {
+      name: 'Mercador Z-4',
+    },
+    create: {
+      id: NPC_MERCHANT_SECTOR7,
+      name: 'Mercador Z-4',
+      description: 'Um droide de sucata remodelado para o comércio. Seus olhos ópticos giram constantemente.',
+      isHostile: false,
+      rank: 'C',
+      stats: {
+        hp: 500,
+        dialogue: 'Precisa de algo? Tenho baterias, estimulantes... pelo preço certo.',
+        shopInventory: [
+          ITEM_SMALL_HEALTH_POTION,
+          ITEM_SMALL_ECO_BATTERY
+        ],
+        skills: []
+      },
+      types: ['construct', 'merchant']
+    }
+  });
+
+  // NOVO: Vândalo (Rank F/E) - Setor 7
+  await prisma.nPCTemplate.upsert({
+    where: { id: THUG_WEAK_ID },
+    update: {},
+    create: {
+      id: THUG_WEAK_ID,
+      name: 'Vândalo Cibernético',
+      description: 'Um humano com implantes de baixa qualidade e atitude agressiva.',
+      isHostile: true,
+      rank: 'E',
+      stats: {
+        hp: 60,
+        attack: 8,
+        defense: 2,
+        xp: 35,
+        goldMin: 5,
+        goldMax: 15,
+        level: 2,
+        dialogue: 'Passa os créditos ou vira sucata!',
+        skills: []
+      },
+      types: ['humanoid']
+    }
+  });
+
+  // --- SPAWN NPCs SECTOR 7 ---
+  await prisma.nPCInstance.create({
+    data: {
+      templateId: NPC_MERCHANT_SECTOR7,
+      mapId: ROOM_ID_BLACK_MARKET,
+      currentHp: 500
+    }
+  });
+
+  await prisma.nPCInstance.create({
+    data: {
+      templateId: THUG_WEAK_ID,
+      mapId: ROOM_ID_BACK_ALLEY,
+      currentHp: 60
+    }
+  });
+  await prisma.nPCInstance.create({
+    data: {
+      templateId: THUG_WEAK_ID,
+      mapId: ROOM_ID_BACK_ALLEY,
+      currentHp: 60
+    }
+  }); // Two thugs
+
+  console.log('Dados de seed inseridos/atualizados com sucesso!');
 
   // --- 8. Instâncias de NPC ---
   // Coloca o Supervisor na sala do Prólogo
@@ -942,7 +1091,12 @@ async function main() {
   const NPC_TEMPLATE_CHEST = 'npc_chest_tutorial';
   await prisma.nPCTemplate.upsert({
     where: { id: NPC_TEMPLATE_CHEST },
-    update: {},
+    update: {
+      stats: {
+        isInteractable: true,
+        dialogue: '[SYSTEM]: Acesso concedido. Recompensa liberada.'
+      }
+    },
     create: {
       id: NPC_TEMPLATE_CHEST,
       name: 'Baú Antigo',
@@ -952,17 +1106,48 @@ async function main() {
       stats: {
         isInteractable: true,
         dialogue: '[SYSTEM]: Acesso concedido. Recompensa liberada.'
-        // A lógica de dar o item será feita no código do Gateway/Service ao interagir
       },
       types: ['object', 'chest']
     }
   });
+
+  // Portal de Saída (Novo)
+  const NPC_TEMPLATE_EXIT_PORTAL = 'npc_exit_portal';
+  await prisma.nPCTemplate.upsert({
+    where: { id: NPC_TEMPLATE_EXIT_PORTAL },
+    update: {},
+    create: {
+      id: NPC_TEMPLATE_EXIT_PORTAL,
+      name: 'Portal de Retorno',
+      description: 'Uma fenda no espaço-tempo, estabilizada e pronta para transporte.',
+      isHostile: false,
+      rank: 'F',
+      stats: {
+        isInteractable: true,
+        dialogue: '[SYSTEM]: Destino confirmado: Ponto de Partida.'
+      },
+      types: ['object', 'portal']
+    }
+  });
+
+  // Limpar instâncias antigas para evitar duplicatas
+  await prisma.nPCInstance.deleteMany({ where: { mapId: TD_ROOM_5 } });
 
   // Instância do Baú na Sala 5
   await prisma.nPCInstance.create({
     data: {
       templateId: NPC_TEMPLATE_CHEST,
       mapId: TD_ROOM_5,
+      currentHp: 100 // Fix visibility (RoomService requires hp > 0)
+    }
+  });
+
+  // Instância do Portal na Sala 5
+  await prisma.nPCInstance.create({
+    data: {
+      templateId: NPC_TEMPLATE_EXIT_PORTAL,
+      mapId: TD_ROOM_5,
+      currentHp: 100 // Fix visibility
     }
   });
 
@@ -971,7 +1156,18 @@ async function main() {
   const MON_CABLE_RAT = 'mon_cable_rat';
   await prisma.nPCTemplate.upsert({
     where: { id: MON_CABLE_RAT },
-    update: {},
+    update: {
+      stats: {
+        hp: 20,
+        attack: 3,
+        defense: 0,
+        xp: 15,
+        goldMin: 1,
+        goldMax: 3,
+        level: 1,
+        skills: [{ name: 'Mordida', chance: 0.4, effectData: { type: 'damage', value: 3 } }]
+      }
+    },
     create: {
       id: MON_CABLE_RAT,
       name: 'Rato de Cabo',
@@ -992,15 +1188,31 @@ async function main() {
     }
   });
 
+  // Limpar instâncias antigas para evitar duplicatas
+  await prisma.nPCInstance.deleteMany({ where: { mapId: TD_ROOM_2 } });
+
   await prisma.nPCInstance.create({ data: { templateId: MON_CABLE_RAT, mapId: TD_ROOM_2, currentHp: 20 } });
   await prisma.nPCInstance.create({ data: { templateId: MON_CABLE_RAT, mapId: TD_ROOM_2, currentHp: 20 } }); // Dois ratos
-  await prisma.nPCInstance.create({ data: { templateId: MON_CABLE_RAT, mapId: TD_ROOM_2, currentHp: 20 } }); // Três ratos (User Request)
 
   // Sala 4: Chefe Tutorial (Sentinela Defeituosa)
   const MON_BROKEN_SENTRY = 'mon_broken_sentry';
   await prisma.nPCTemplate.upsert({
     where: { id: MON_BROKEN_SENTRY },
-    update: {},
+    update: {
+      stats: {
+        hp: 40,
+        attack: 4,
+        defense: 0,
+        xp: 80,
+        goldMin: 20,
+        goldMax: 50,
+        level: 2,
+        resistances: { physical: 0.1, lightning: -0.2 },
+        skills: [
+          { name: 'Choque Estático', chance: 0.3, effectData: { type: 'damage', value: 5, element: 'lightning' } }
+        ]
+      }
+    },
     create: {
       id: MON_BROKEN_SENTRY,
       name: 'Sentinela Defeituosa',
@@ -1008,23 +1220,26 @@ async function main() {
       isHostile: true,
       rank: 'E',
       stats: {
-        hp: 60, // Nerfed from 100
-        attack: 5, // Nerfed from 8
-        defense: 1, // Nerfed from 3
+        hp: 40, // Nerfed from 60
+        attack: 4, // Nerfed from 5
+        defense: 0, // Nerfed from 1
         xp: 80,
         goldMin: 20,
         goldMax: 50,
         level: 2,
-        resistances: { physical: 0.2, lightning: -0.2 },
+        resistances: { physical: 0.1, lightning: -0.2 },
         skills: [
-          { name: 'Choque Estático', chance: 0.3, effectData: { type: 'damage', value: 6, element: 'lightning' } } // Nerfed from 10
+          { name: 'Choque Estático', chance: 0.3, effectData: { type: 'damage', value: 5, element: 'lightning' } }
         ]
       },
       types: ['construct', 'machine']
     }
   });
 
-  await prisma.nPCInstance.create({ data: { templateId: MON_BROKEN_SENTRY, mapId: TD_ROOM_4, currentHp: 100 } });
+  // Limpar instâncias antigas para evitar duplicatas
+  await prisma.nPCInstance.deleteMany({ where: { mapId: TD_ROOM_4 } });
+
+  await prisma.nPCInstance.create({ data: { templateId: MON_BROKEN_SENTRY, mapId: TD_ROOM_4, currentHp: 40 } });
 
   console.log('Tutorial Dungeon populada.');
 

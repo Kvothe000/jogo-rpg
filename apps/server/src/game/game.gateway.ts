@@ -10,6 +10,7 @@ import {
   MessageBody,
   ConnectedSocket,
 } from '@nestjs/websockets';
+// FORCE RECOMPILE - CHECKING WATCHER
 import { Server } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { Prisma, Skill } from '@prisma/client';
@@ -331,191 +332,237 @@ export class GameGateway
 
     if (nextRoom && nextRoom.npcInstances.length > 0) {
       const hostile = nextRoom.npcInstances.find(npc =>
-        npc.template.isHostile && npc.currentHp > 0
+        npc.template.isHostile && (npc.currentHp ?? 0) > 0
       );
 
       if (hostile) {
+        console.log(`[AutoAggro] Encontrado hostil: ${hostile.template.name} (HP: ${hostile.currentHp})`);
+
         // Delay pequeno para o cliente processar a mudança de sala antes do combate
         setTimeout(async () => {
-          console.log(`[AutoAggro] Inimigo ${hostile.template.name} detectou ${user.character.name}!`);
+          if (!user.character) return;
+          console.log(`[AutoAggro] Iniciando combate contra ${hostile.template.name}...`);
           client.emit('serverMessage', `⚠️ ALERTA: ${hostile.template.name} detectou sua presença!`);
-          client.emit('playSfx', 'hostile_alert'); // Sugestão de SFX
+          client.emit('playSfx', 'hostile_alert');
 
           await this.handleStartCombat(client, { npcInstanceId: hostile.id });
-        }, 1500);
+        }, 500);
+      } else {
+        console.log('[AutoAggro] Nenhum hostil vivo encontrado nesta sala.');
       }
+    } else {
+      console.log('[AutoAggro] Sala vazia ou sem NPCs.');
+    }
+  }
+
+  @SubscribeMessage('playerInteractNpc')
+  async handleNpcInteraction(
+    @ConnectedSocket() client: SocketWithAuth,
+    @MessageBody() npcInstanceId: string,
+  ) {
+    const { user } = client.data;
+    if (!user.character) {
+      client.emit('serverMessage', 'Erro: Personagem não encontrado.');
+      return;
+    }
+    const playerRoomId = user.character.mapId;
+    const characterId = user.character.id;
+
+    const npcInstance = await this.prisma.nPCInstance.findFirst({
+      where: {
+        id: npcInstanceId,
+        mapId: playerRoomId,
+      },
+      include: {
+        template: true,
+      },
+    });
+
+    if (!npcInstance) {
+      client.emit('serverMessage', 'Não há ninguém com esse nome aqui.');
+      return;
     }
 
-    @SubscribeMessage('playerInteractNpc')
-    async handleNpcInteraction(
-      @ConnectedSocket() client: SocketWithAuth,
-      @MessageBody() npcInstanceId: string,
-    ) {
-      const { user } = client.data;
-      if (!user.character) {
-        client.emit('serverMessage', 'Erro: Personagem não encontrado.');
-        return;
+    const npcName = npcInstance.template.name;
+    let dialogue = '';
+
+    switch (npcName) {
+      case 'Guarda da Cidadela':
+        dialogue =
+          '"Cuidado por onde anda, Renegado. A Ordem está observando."';
+        break;
+      default:
+        dialogue = '"..." (Ele não parece querer conversar.)';
+    }
+
+    client.emit('npcDialogue', {
+      npcName: npcName,
+      dialogue: dialogue,
+    });
+
+    // Lógica Específica por Template ID
+    if (npcInstance.template.id === 'npc_chest_tutorial') {
+      console.log('[InteractNPC] Lógica: Baú Tutorial');
+
+      const rankFKeywords = ['Brasa', 'Orvalho', 'Brisa', 'Poeira'];
+      const randomKw = rankFKeywords[Math.floor(Math.random() * rankFKeywords.length)];
+
+      // Tenta dar a keyword
+      const gained = await this.ecoService.grantKeywordToCharacter(characterId, randomKw);
+
+      if (gained) {
+        console.log(`[InteractNPC] Chest: Eco ${randomKw} concedido com sucesso.`);
+        dialogue = `[SISTEMA]: Acesso Autorizado. Você obteve um Eco Instável: ${randomKw}.`;
+        client.emit('playSfx', 'success');
+      } else {
+        console.log(`[InteractNPC] Chest: Eco falhou ou já possui. Dando item.`);
+        // Fallback: Se já tiver a keyword, dar um item
+        dialogue = `[SISTEMA]: Eco redundante detectado. Convertendo em suprimentos...`;
+
+        await this.inventoryService.addItemToInventory(characterId, 'item_small_eco_battery', 1);
+
+        // ATUALIZAR INVENTÁRIO DO CLIENTE
+        const updatedInventory = await this.inventoryService.getInventory(characterId);
+        client.emit('updateInventory', { slots: updatedInventory });
+
+        client.emit('serverMessage', 'Você recebeu: Bateria de Eco Pequena');
+        client.emit('playSfx', 'loot');
       }
-      const playerRoomId = user.character.mapId;
 
-      const npcInstance = await this.prisma.nPCInstance.findFirst({
-        where: {
-          id: npcInstanceId,
-          mapId: playerRoomId,
-        },
-        include: {
-          template: true,
-        },
-      });
-
-      if (!npcInstance) {
-        client.emit('serverMessage', 'Não há ninguém com esse nome aqui.');
-        return;
-      }
-
-      const npcName = npcInstance.template.name;
-      let dialogue = '';
-
-      switch (npcName) {
-        case 'Guarda da Cidadela':
-          dialogue =
-            '"Cuidado por onde anda, Renegado. A Ordem está observando."';
-          break;
-        default:
-          dialogue = '"..." (Ele não parece querer conversar.)';
-      }
-
+      // Re-emitir diálogo atualizado
       client.emit('npcDialogue', {
         npcName: npcName,
         dialogue: dialogue,
       });
     }
 
-    @SubscribeMessage('equipItem')
-    async handleEquipItem(
-      @ConnectedSocket() client: SocketWithAuth,
-      @MessageBody() payload: { slotId: string },
-    ) {
-      const characterId = client.data.user?.character?.id;
-      const slotIdToEquip = payload?.slotId;
+  }
 
-      if (!characterId || !slotIdToEquip) {
-        client.emit('serverMessage', 'Erro: Dados inválidos para equipar item.');
-        return;
-      }
+  @SubscribeMessage('equipItem')
+  async handleEquipItem(
+    @ConnectedSocket() client: SocketWithAuth,
+    @MessageBody() payload: { slotId: string },
+  ) {
+    const characterId = client.data.user?.character?.id;
+    const slotIdToEquip = payload?.slotId;
 
-      try {
-        await this.inventoryService.equipItem(characterId, slotIdToEquip);
-
-        const updatedInventory =
-          await this.inventoryService.getInventory(characterId);
-        client.emit('updateInventory', { slots: updatedInventory });
-        client.emit('serverMessage', 'Item equipado!');
-      } catch (error) {
-        const message =
-          error instanceof HttpException
-            ? error.message
-            : 'Erro desconhecido ao tentar equipar o item.';
-        client.emit('serverMessage', `Falha ao equipar: ${message}`);
-      }
+    if (!characterId || !slotIdToEquip) {
+      client.emit('serverMessage', 'Erro: Dados inválidos para equipar item.');
+      return;
     }
 
-    @SubscribeMessage('unequipItem')
-    async handleUnequipItem(
-      @ConnectedSocket() client: SocketWithAuth,
-      @MessageBody() payload: { slotId: string },
-    ) {
-      const characterId = client.data.user?.character?.id;
-      const slotIdToUnequip = payload?.slotId;
+    try {
+      await this.inventoryService.equipItem(characterId, slotIdToEquip);
 
-      if (!characterId || !slotIdToUnequip) {
-        client.emit(
-          'serverMessage',
-          'Erro: Dados inválidos para desequipar item.',
-        );
-        return;
-      }
+      const updatedInventory =
+        await this.inventoryService.getInventory(characterId);
+      client.emit('updateInventory', { slots: updatedInventory });
+      client.emit('serverMessage', 'Item equipado!');
+    } catch (error) {
+      const message =
+        error instanceof HttpException
+          ? error.message
+          : 'Erro desconhecido ao tentar equipar o item.';
+      client.emit('serverMessage', `Falha ao equipar: ${message}`);
+    }
+  }
 
-      try {
-        await this.inventoryService.unequipItem(characterId, slotIdToUnequip);
+  @SubscribeMessage('unequipItem')
+  async handleUnequipItem(
+    @ConnectedSocket() client: SocketWithAuth,
+    @MessageBody() payload: { slotId: string },
+  ) {
+    const characterId = client.data.user?.character?.id;
+    const slotIdToUnequip = payload?.slotId;
 
-        const updatedInventory =
-          await this.inventoryService.getInventory(characterId);
-        client.emit('updateInventory', { slots: updatedInventory });
-        client.emit('serverMessage', 'Item desequipado!');
-      } catch (error) {
-        const message =
-          error instanceof HttpException
-            ? error.message
-            : 'Erro desconhecido ao tentar desequipar o item.';
-        client.emit('serverMessage', `Falha ao desequipar: ${message}`);
-      }
+    if (!characterId || !slotIdToUnequip) {
+      client.emit(
+        'serverMessage',
+        'Erro: Dados inválidos para desequipar item.',
+      );
+      return;
     }
 
-    @SubscribeMessage('useItem')
-    async handleUseItem(
-      @ConnectedSocket() client: SocketWithAuth,
-      @MessageBody() payload: { slotId: string },
-    ) {
-      const characterId = client.data.user?.character?.id;
-      const slotIdToUse = payload?.slotId;
+    try {
+      await this.inventoryService.unequipItem(characterId, slotIdToUnequip);
 
-      if (!characterId || !slotIdToUse) {
-        client.emit('serverMessage', 'Erro: Dados inválidos para usar item.');
-        return;
-      }
+      const updatedInventory =
+        await this.inventoryService.getInventory(characterId);
+      client.emit('updateInventory', { slots: updatedInventory });
+      client.emit('serverMessage', 'Item desequipado!');
+    } catch (error) {
+      const message =
+        error instanceof HttpException
+          ? error.message
+          : 'Erro desconhecido ao tentar desequipar o item.';
+      client.emit('serverMessage', `Falha ao desequipar: ${message}`);
+    }
+  }
 
-      try {
-        const result = await this.inventoryService.useItem(
-          characterId,
-          slotIdToUse,
-        );
+  @SubscribeMessage('useItem')
+  async handleUseItem(
+    @ConnectedSocket() client: SocketWithAuth,
+    @MessageBody() payload: { slotId: string },
+  ) {
+    const characterId = client.data.user?.character?.id;
+    const slotIdToUse = payload?.slotId;
 
-        client.emit('serverMessage', result.message);
-
-        const updatedInventory =
-          await this.inventoryService.getInventory(characterId);
-        client.emit('updateInventory', { slots: updatedInventory });
-      } catch (error) {
-        const message =
-          error instanceof HttpException
-            ? error.message
-            : 'Erro desconhecido ao tentar usar o item.';
-        client.emit('serverMessage', `Falha ao usar: ${message}`);
-      }
+    if (!characterId || !slotIdToUse) {
+      client.emit('serverMessage', 'Erro: Dados inválidos para usar item.');
+      return;
     }
 
-    @SubscribeMessage('spendAttributePoint')
-    async handleSpendAttributePoint(
-      @ConnectedSocket() client: SocketWithAuth,
-      @MessageBody() payload: { attribute: CharacterAttribute },
-    ) {
-      const characterId = client.data.user?.character?.id;
-      const attribute = payload?.attribute;
+    try {
+      const result = await this.inventoryService.useItem(
+        characterId,
+        slotIdToUse,
+      );
 
-      if (!characterId || !attribute) {
-        client.emit('serverMessage', 'Erro: Dados inválidos para gastar ponto.');
-        return;
-      }
+      client.emit('serverMessage', result.message);
 
-      try {
-        await this.characterStatsService.spendAttributePoint(
-          characterId,
-          attribute,
-        );
-
-        client.emit(
-          'serverMessage',
-          `Você aumentou ${this.translateAttribute(attribute)}!`,
-        );
-      } catch (error) {
-        const message =
-          error instanceof HttpException
-            ? error.message
-            : 'Erro desconhecido ao gastar ponto.';
-        client.emit('serverMessage', `Falha: ${message}`);
-      }
+      const updatedInventory =
+        await this.inventoryService.getInventory(characterId);
+      client.emit('updateInventory', { slots: updatedInventory });
+    } catch (error) {
+      const message =
+        error instanceof HttpException
+          ? error.message
+          : 'Erro desconhecido ao tentar usar o item.';
+      client.emit('serverMessage', `Falha ao usar: ${message}`);
     }
+  }
+
+  @SubscribeMessage('spendAttributePoint')
+  async handleSpendAttributePoint(
+    @ConnectedSocket() client: SocketWithAuth,
+    @MessageBody() payload: { attribute: CharacterAttribute },
+  ) {
+    const characterId = client.data.user?.character?.id;
+    const attribute = payload?.attribute;
+
+    if (!characterId || !attribute) {
+      client.emit('serverMessage', 'Erro: Dados inválidos para gastar ponto.');
+      return;
+    }
+
+    try {
+      await this.characterStatsService.spendAttributePoint(
+        characterId,
+        attribute,
+      );
+
+      client.emit(
+        'serverMessage',
+        `Você aumentou ${this.translateAttribute(attribute)}!`,
+      );
+    } catch (error) {
+      const message =
+        error instanceof HttpException
+          ? error.message
+          : 'Erro desconhecido ao gastar ponto.';
+      client.emit('serverMessage', `Falha: ${message}`);
+    }
+  }
 
   private translateAttribute(attribute: CharacterAttribute): string {
     switch (attribute) {
@@ -745,7 +792,8 @@ export class GameGateway
       }
       // 5. BAÚ DO TUTORIAL (REWARD CHEST)
       else if (npcInstance.template.id === 'npc_chest_tutorial') {
-        console.log('[InteractNPC] Lógica: Baú Tutorial');
+        console.log('[InteractNPC] Lógica: Baú Tutorial TRIGGERED');
+        console.log(`[InteractNPC] Chest Instance ID: ${npcInstanceId}`);
 
         const rankFKeywords = ['Brasa', 'Orvalho', 'Brisa', 'Poeira'];
         const randomKw = rankFKeywords[Math.floor(Math.random() * rankFKeywords.length)];
@@ -754,15 +802,69 @@ export class GameGateway
         const gained = await this.ecoService.grantKeywordToCharacter(characterId, randomKw);
 
         if (gained) {
+          console.log(`[InteractNPC] Chest: Eco ${randomKw} concedido com sucesso.`);
           dialogue = `[SISTEMA]: Acesso Autorizado. Você obteve um Eco Instável: ${randomKw}.`;
           client.emit('playSfx', 'success');
         } else {
+          console.log(`[InteractNPC] Chest: Eco falhou ou já possui. Dando item.`);
           // Fallback: Se já tiver a keyword, dar um item
           dialogue = `[SISTEMA]: Eco redundante detectado. Convertendo em suprimentos...`;
-          await this.inventoryService.addItem(characterId, 'item_small_eco_battery', 1);
+          await this.inventoryService.addItemToInventory(characterId, 'item_bateria_eco_pequena', 1);
           client.emit('serverMessage', 'Você recebeu: Bateria de Eco Pequena');
           client.emit('playSfx', 'loot');
         }
+
+        // Remover o baú após o uso (DELETE)
+        try {
+          console.log(`[InteractNPC] Tentando deletar baú: ${npcInstanceId}`);
+          await this.prisma.nPCInstance.delete({
+            where: { id: npcInstanceId }
+          });
+          console.log(`[InteractNPC] Baú DELETADO com sucesso.`);
+          client.emit('serverMessage', 'O baú se desfaz em poeira digital.');
+        } catch (e) {
+          console.error(`[InteractNPC] ERROR Failed to delete chest ${npcInstanceId}`, e);
+          client.emit('serverMessage', 'ERRO: Falha ao remover o baú.');
+        }
+
+        // Atualizar visualização da sala para remover o baú
+        await this.sendRoomDataToClient(client);
+      }
+      // 6. PORTAL DE SAÍDA (TUTORIAL END)
+      else if (npcInstance.template.id === 'npc_exit_portal') {
+        console.log('[InteractNPC] Lógica: Portal de Saída');
+        dialogue = '[SISTEMA]: Iniciando sequência de transporte...';
+        client.emit('serverMessage', '⚡ Energia de transporte detectada...');
+        client.emit('playSfx', 'teleport');
+
+        const DESTINATION_ID = 'cl_starter_room';
+
+        setTimeout(async () => {
+          try {
+            // Verifica se a sala de destino existe antes
+            const destination = await this.prisma.gameMap.findUnique({ where: { id: DESTINATION_ID } });
+            if (!destination) {
+              throw new Error(`Sala de destino '${DESTINATION_ID}' não existe no banco de dados!`);
+            }
+
+            // --- TENTATIVA DE FX GLITCH NO CLIENTE ---
+            client.emit('serverMessage', '[GLITCH] A realidade se reorganiza...');
+
+            await this.prisma.character.update({
+              where: { id: characterId },
+              data: { mapId: DESTINATION_ID }
+            });
+            // Atualiza o objeto local do usuario
+            if (client.data.user && client.data.user.character) {
+              client.data.user.character.mapId = DESTINATION_ID;
+            }
+            client.emit('serverMessage', 'Você retornou à Cidadela.');
+            await this.handlePlayerLook(client);
+          } catch (err) {
+            console.error('[InteractNPC] Erro no teleporte do portal:', err);
+            client.emit('serverMessage', 'ERRO: Falha no teleporte. Contacte o administrador.');
+          }
+        }, 1000);
       }
       else {
         console.log('[InteractNPC] Lógica: Fallback / Default');
@@ -1052,8 +1154,11 @@ export class GameGateway
         });
         if (updatedUser) {
           client.data.user = updatedUser;
-          // Sync client state
-          client.emit('profileUpdate', updatedUser);
+          // Sync client state - serialize BigInts
+          const serializedUser = JSON.parse(JSON.stringify(updatedUser, (key, value) =>
+            typeof value === 'bigint' ? value.toString() : value
+          ));
+          client.emit('profileUpdate', serializedUser);
 
           // Força atualização da sala para o cliente
           await this.handlePlayerLook(client);
@@ -1296,25 +1401,39 @@ export class GameGateway
     const mapId = client.data.user.character.mapId;
     const currentPlayerId = client.data.user.character.id;
 
-    // Use RoomService to get enriched data
-    const room = await this.roomService.getRoomData(mapId);
+    // --- RESET TUTORIAL DUNGEON ON ENTRY ---
+    if (mapId === 'td_room_01_entrance') {
+      console.log(`[GameGateway] Player ${currentPlayerId} entered Tutorial Entrance. Triggering Dungeon Reset.`);
+      await this.resetTutorialDungeon();
+    }
+    // ---------------------------------------
 
-    if (room) {
-      const otherPlayers = room.characters.filter(
-        (char) => char.id !== currentPlayerId,
-      );
-      const npcsInRoom = room.npcInstances.map((instance) => ({
-        id: instance.id,
-        name: instance.template.name,
-      }));
+    try {
+      // Use RoomService to get enriched data
+      const room = await this.roomService.getRoomData(mapId);
 
-      client.emit('updateRoom', {
-        name: room.name,
-        description: room.description,
-        exits: room.exits as Record<string, string>,
-        players: otherPlayers,
-        npcs: npcsInRoom,
-      });
+      if (room) {
+        const otherPlayers = room.characters.filter(
+          (char) => char.id !== currentPlayerId,
+        );
+        const npcsInRoom = room.npcInstances.map((instance) => ({
+          id: instance.id,
+          name: instance.template.name,
+        }));
+
+        client.emit('updateRoom', {
+          name: room.name,
+          description: room.description,
+          exits: room.exits as Record<string, string>,
+          players: otherPlayers,
+          npcs: npcsInRoom,
+        });
+      } else {
+        console.warn(`[sendRoomDataToClient] Room ${mapId} returned null.`);
+        client.emit('serverMessage', 'ERRO CRÍTICO: Sala não encontrada. Contacte o suporte.');
+      }
+    } catch (err) {
+      console.error(`[sendRoomDataToClient] Error fetching room ${mapId}:`, err);
     }
   }
 
@@ -1329,6 +1448,57 @@ export class GameGateway
         `[GameGateway] Enviando playerStatsUpdated para ${payload.characterId}`,
       );
       socket.emit('playerStatsUpdated', payload.totalStats);
+    }
+  }
+
+  // --- TUTORIAL DUNGEON RESET LOGIC ---
+  private async resetTutorialDungeon() {
+    try {
+      console.log('[ResetTutorial] Iniciando reset da dungeon...');
+
+      // 1. Reviver Monstros (Hardcoded HP for safety or fetch query)
+      // Slime (Room 2) - HP 50
+      await this.prisma.nPCInstance.updateMany({
+        where: { mapId: 'td_room_02_combat', templateId: 'mon_slime_mana', currentHp: { lte: 0 } },
+        data: { currentHp: 50 }
+      });
+
+      // Goblin (Room 3) - HP 80 // Assuming template stats
+      await this.prisma.nPCInstance.updateMany({
+        where: { mapId: 'td_room_03_corridor', templateId: 'mon_goblin_peon', currentHp: { lte: 0 } },
+        data: { currentHp: 80 }
+      });
+
+      // Boss (Room 4) - HP 60
+      await this.prisma.nPCInstance.updateMany({
+        where: { mapId: 'td_room_04_boss', templateId: 'mon_broken_sentry', currentHp: { lte: 0 } },
+        data: { currentHp: 60 }
+      });
+
+      console.log('[ResetTutorial] Monstros revividos.');
+
+      // 2. Restaurar Baú (Room 5) se não existir
+      const chestExists = await this.prisma.nPCInstance.findFirst({
+        where: { mapId: 'td_room_05_reward', templateId: 'npc_chest_tutorial' }
+      });
+
+      if (!chestExists) {
+        console.log('[ResetTutorial] Restaurando Baú...');
+        const t = await this.prisma.nPCTemplate.findUnique({ where: { id: 'npc_chest_tutorial' } });
+        if (t) {
+          await this.prisma.nPCInstance.create({
+            data: {
+              templateId: 'npc_chest_tutorial',
+              mapId: 'td_room_05_reward',
+              currentHp: 100,
+            }
+          });
+          console.log('[ResetTutorial] Baú recriado.');
+        }
+      }
+
+    } catch (error) {
+      console.error('[ResetTutorial] Erro ao resetar dungeon:', error);
     }
   }
 }

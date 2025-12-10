@@ -21,7 +21,10 @@ export class RoomService {
             where: { id: mapId },
             include: {
                 characters: { select: { id: true, name: true } },
-                npcInstances: { include: { template: { select: { name: true } } } },
+                npcInstances: {
+                    where: { currentHp: { gt: 0 } },
+                    include: { template: { select: { name: true } } }
+                },
             },
         });
 
