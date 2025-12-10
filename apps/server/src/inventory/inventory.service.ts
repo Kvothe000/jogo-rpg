@@ -375,4 +375,30 @@ export class InventoryService {
       );
     }
   }
+  async addItemToInventory(characterId: string, itemId: string, quantity: number = 1): Promise<void> {
+    // Check if slot with item exists
+    const existingSlot = await this.prisma.inventorySlot.findFirst({
+      where: {
+        characterId,
+        itemId,
+        // Optional: Check max stack size? For now assume stackable.
+      }
+    });
+
+    if (existingSlot) {
+      await this.prisma.inventorySlot.update({
+        where: { id: existingSlot.id },
+        data: { quantity: { increment: quantity } }
+      });
+    } else {
+      await this.prisma.inventorySlot.create({
+        data: {
+          characterId,
+          itemId,
+          quantity,
+          isEquipped: false
+        }
+      });
+    }
+  }
 }

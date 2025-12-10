@@ -314,179 +314,208 @@ export class GameGateway
 
     user.character.mapId = nextRoomId;
     client.emit('serverMessage', `Você se move para... ${direction}.`);
+
+    // Atualiza a vista do cliente
     await this.sendRoomDataToClient(client);
-  }
 
-  @SubscribeMessage('playerInteractNpc')
-  async handleNpcInteraction(
-    @ConnectedSocket() client: SocketWithAuth,
-    @MessageBody() npcInstanceId: string,
-  ) {
-    const { user } = client.data;
-    if (!user.character) {
-      client.emit('serverMessage', 'Erro: Personagem não encontrado.');
-      return;
-    }
-    const playerRoomId = user.character.mapId;
-
-    const npcInstance = await this.prisma.nPCInstance.findFirst({
-      where: {
-        id: npcInstanceId,
-        mapId: playerRoomId,
-      },
+    // --- AUTO-AGGRO SYSTEM ---
+    // Verifica se há inimigos hostis na nova sala
+    const nextRoom = await this.prisma.gameMap.findUnique({
+      where: { id: nextRoomId },
       include: {
-        template: true,
-      },
+        npcInstances: {
+          include: { template: true }
+        }
+      }
     });
 
-    if (!npcInstance) {
-      client.emit('serverMessage', 'Não há ninguém com esse nome aqui.');
-      return;
-    }
-
-    const npcName = npcInstance.template.name;
-    let dialogue = '';
-
-    switch (npcName) {
-      case 'Guarda da Cidadela':
-        dialogue =
-          '"Cuidado por onde anda, Renegado. A Ordem está observando."';
-        break;
-      default:
-        dialogue = '"..." (Ele não parece querer conversar.)';
-    }
-
-    client.emit('npcDialogue', {
-      npcName: npcName,
-      dialogue: dialogue,
-    });
-  }
-
-  @SubscribeMessage('equipItem')
-  async handleEquipItem(
-    @ConnectedSocket() client: SocketWithAuth,
-    @MessageBody() payload: { slotId: string },
-  ) {
-    const characterId = client.data.user?.character?.id;
-    const slotIdToEquip = payload?.slotId;
-
-    if (!characterId || !slotIdToEquip) {
-      client.emit('serverMessage', 'Erro: Dados inválidos para equipar item.');
-      return;
-    }
-
-    try {
-      await this.inventoryService.equipItem(characterId, slotIdToEquip);
-
-      const updatedInventory =
-        await this.inventoryService.getInventory(characterId);
-      client.emit('updateInventory', { slots: updatedInventory });
-      client.emit('serverMessage', 'Item equipado!');
-    } catch (error) {
-      const message =
-        error instanceof HttpException
-          ? error.message
-          : 'Erro desconhecido ao tentar equipar o item.';
-      client.emit('serverMessage', `Falha ao equipar: ${message}`);
-    }
-  }
-
-  @SubscribeMessage('unequipItem')
-  async handleUnequipItem(
-    @ConnectedSocket() client: SocketWithAuth,
-    @MessageBody() payload: { slotId: string },
-  ) {
-    const characterId = client.data.user?.character?.id;
-    const slotIdToUnequip = payload?.slotId;
-
-    if (!characterId || !slotIdToUnequip) {
-      client.emit(
-        'serverMessage',
-        'Erro: Dados inválidos para desequipar item.',
-      );
-      return;
-    }
-
-    try {
-      await this.inventoryService.unequipItem(characterId, slotIdToUnequip);
-
-      const updatedInventory =
-        await this.inventoryService.getInventory(characterId);
-      client.emit('updateInventory', { slots: updatedInventory });
-      client.emit('serverMessage', 'Item desequipado!');
-    } catch (error) {
-      const message =
-        error instanceof HttpException
-          ? error.message
-          : 'Erro desconhecido ao tentar desequipar o item.';
-      client.emit('serverMessage', `Falha ao desequipar: ${message}`);
-    }
-  }
-
-  @SubscribeMessage('useItem')
-  async handleUseItem(
-    @ConnectedSocket() client: SocketWithAuth,
-    @MessageBody() payload: { slotId: string },
-  ) {
-    const characterId = client.data.user?.character?.id;
-    const slotIdToUse = payload?.slotId;
-
-    if (!characterId || !slotIdToUse) {
-      client.emit('serverMessage', 'Erro: Dados inválidos para usar item.');
-      return;
-    }
-
-    try {
-      const result = await this.inventoryService.useItem(
-        characterId,
-        slotIdToUse,
+    if (nextRoom && nextRoom.npcInstances.length > 0) {
+      const hostile = nextRoom.npcInstances.find(npc =>
+        npc.template.isHostile && npc.currentHp > 0
       );
 
-      client.emit('serverMessage', result.message);
+      if (hostile) {
+        // Delay pequeno para o cliente processar a mudança de sala antes do combate
+        setTimeout(async () => {
+          console.log(`[AutoAggro] Inimigo ${hostile.template.name} detectou ${user.character.name}!`);
+          client.emit('serverMessage', `⚠️ ALERTA: ${hostile.template.name} detectou sua presença!`);
+          client.emit('playSfx', 'hostile_alert'); // Sugestão de SFX
 
-      const updatedInventory =
-        await this.inventoryService.getInventory(characterId);
-      client.emit('updateInventory', { slots: updatedInventory });
-    } catch (error) {
-      const message =
-        error instanceof HttpException
-          ? error.message
-          : 'Erro desconhecido ao tentar usar o item.';
-      client.emit('serverMessage', `Falha ao usar: ${message}`);
-    }
-  }
-
-  @SubscribeMessage('spendAttributePoint')
-  async handleSpendAttributePoint(
-    @ConnectedSocket() client: SocketWithAuth,
-    @MessageBody() payload: { attribute: CharacterAttribute },
-  ) {
-    const characterId = client.data.user?.character?.id;
-    const attribute = payload?.attribute;
-
-    if (!characterId || !attribute) {
-      client.emit('serverMessage', 'Erro: Dados inválidos para gastar ponto.');
-      return;
+          await this.handleStartCombat(client, { npcInstanceId: hostile.id });
+        }, 1500);
+      }
     }
 
-    try {
-      await this.characterStatsService.spendAttributePoint(
-        characterId,
-        attribute,
-      );
+    @SubscribeMessage('playerInteractNpc')
+    async handleNpcInteraction(
+      @ConnectedSocket() client: SocketWithAuth,
+      @MessageBody() npcInstanceId: string,
+    ) {
+      const { user } = client.data;
+      if (!user.character) {
+        client.emit('serverMessage', 'Erro: Personagem não encontrado.');
+        return;
+      }
+      const playerRoomId = user.character.mapId;
 
-      client.emit(
-        'serverMessage',
-        `Você aumentou ${this.translateAttribute(attribute)}!`,
-      );
-    } catch (error) {
-      const message =
-        error instanceof HttpException
-          ? error.message
-          : 'Erro desconhecido ao gastar ponto.';
-      client.emit('serverMessage', `Falha: ${message}`);
+      const npcInstance = await this.prisma.nPCInstance.findFirst({
+        where: {
+          id: npcInstanceId,
+          mapId: playerRoomId,
+        },
+        include: {
+          template: true,
+        },
+      });
+
+      if (!npcInstance) {
+        client.emit('serverMessage', 'Não há ninguém com esse nome aqui.');
+        return;
+      }
+
+      const npcName = npcInstance.template.name;
+      let dialogue = '';
+
+      switch (npcName) {
+        case 'Guarda da Cidadela':
+          dialogue =
+            '"Cuidado por onde anda, Renegado. A Ordem está observando."';
+          break;
+        default:
+          dialogue = '"..." (Ele não parece querer conversar.)';
+      }
+
+      client.emit('npcDialogue', {
+        npcName: npcName,
+        dialogue: dialogue,
+      });
     }
-  }
+
+    @SubscribeMessage('equipItem')
+    async handleEquipItem(
+      @ConnectedSocket() client: SocketWithAuth,
+      @MessageBody() payload: { slotId: string },
+    ) {
+      const characterId = client.data.user?.character?.id;
+      const slotIdToEquip = payload?.slotId;
+
+      if (!characterId || !slotIdToEquip) {
+        client.emit('serverMessage', 'Erro: Dados inválidos para equipar item.');
+        return;
+      }
+
+      try {
+        await this.inventoryService.equipItem(characterId, slotIdToEquip);
+
+        const updatedInventory =
+          await this.inventoryService.getInventory(characterId);
+        client.emit('updateInventory', { slots: updatedInventory });
+        client.emit('serverMessage', 'Item equipado!');
+      } catch (error) {
+        const message =
+          error instanceof HttpException
+            ? error.message
+            : 'Erro desconhecido ao tentar equipar o item.';
+        client.emit('serverMessage', `Falha ao equipar: ${message}`);
+      }
+    }
+
+    @SubscribeMessage('unequipItem')
+    async handleUnequipItem(
+      @ConnectedSocket() client: SocketWithAuth,
+      @MessageBody() payload: { slotId: string },
+    ) {
+      const characterId = client.data.user?.character?.id;
+      const slotIdToUnequip = payload?.slotId;
+
+      if (!characterId || !slotIdToUnequip) {
+        client.emit(
+          'serverMessage',
+          'Erro: Dados inválidos para desequipar item.',
+        );
+        return;
+      }
+
+      try {
+        await this.inventoryService.unequipItem(characterId, slotIdToUnequip);
+
+        const updatedInventory =
+          await this.inventoryService.getInventory(characterId);
+        client.emit('updateInventory', { slots: updatedInventory });
+        client.emit('serverMessage', 'Item desequipado!');
+      } catch (error) {
+        const message =
+          error instanceof HttpException
+            ? error.message
+            : 'Erro desconhecido ao tentar desequipar o item.';
+        client.emit('serverMessage', `Falha ao desequipar: ${message}`);
+      }
+    }
+
+    @SubscribeMessage('useItem')
+    async handleUseItem(
+      @ConnectedSocket() client: SocketWithAuth,
+      @MessageBody() payload: { slotId: string },
+    ) {
+      const characterId = client.data.user?.character?.id;
+      const slotIdToUse = payload?.slotId;
+
+      if (!characterId || !slotIdToUse) {
+        client.emit('serverMessage', 'Erro: Dados inválidos para usar item.');
+        return;
+      }
+
+      try {
+        const result = await this.inventoryService.useItem(
+          characterId,
+          slotIdToUse,
+        );
+
+        client.emit('serverMessage', result.message);
+
+        const updatedInventory =
+          await this.inventoryService.getInventory(characterId);
+        client.emit('updateInventory', { slots: updatedInventory });
+      } catch (error) {
+        const message =
+          error instanceof HttpException
+            ? error.message
+            : 'Erro desconhecido ao tentar usar o item.';
+        client.emit('serverMessage', `Falha ao usar: ${message}`);
+      }
+    }
+
+    @SubscribeMessage('spendAttributePoint')
+    async handleSpendAttributePoint(
+      @ConnectedSocket() client: SocketWithAuth,
+      @MessageBody() payload: { attribute: CharacterAttribute },
+    ) {
+      const characterId = client.data.user?.character?.id;
+      const attribute = payload?.attribute;
+
+      if (!characterId || !attribute) {
+        client.emit('serverMessage', 'Erro: Dados inválidos para gastar ponto.');
+        return;
+      }
+
+      try {
+        await this.characterStatsService.spendAttributePoint(
+          characterId,
+          attribute,
+        );
+
+        client.emit(
+          'serverMessage',
+          `Você aumentou ${this.translateAttribute(attribute)}!`,
+        );
+      } catch (error) {
+        const message =
+          error instanceof HttpException
+            ? error.message
+            : 'Erro desconhecido ao gastar ponto.';
+        client.emit('serverMessage', `Falha: ${message}`);
+      }
+    }
 
   private translateAttribute(attribute: CharacterAttribute): string {
     switch (attribute) {
@@ -542,6 +571,41 @@ export class GameGateway
     });
 
     socket.emit('serverMessage', '⚡ SISTEMAS DE REPARO ATIVADOS. Integridade e Eco restaurados.');
+  }
+
+  @SubscribeMessage('playerRespawn')
+  async handlePlayerRespawn(@ConnectedSocket() client: SocketWithAuth) {
+    const characterId = client.data.user?.character?.id;
+    if (!characterId) return;
+
+    try {
+      console.log(`[GameGateway] Processando Respawn para ${characterId}`);
+      await this.characterStatsService.recoverVitals(characterId);
+
+      // Mover para sala segura (Starter Room por enquanto, pode ser a Base Rebelde depois)
+      const SAFE_ROOM_ID = 'cl_starter_room';
+
+      const updatedChar = await this.prisma.character.update({
+        where: { id: characterId },
+        data: { mapId: SAFE_ROOM_ID },
+        select: { mapId: true } // Otimização
+      });
+
+      // Atualizar sessão do socket
+      if (client.data.user.character) {
+        client.data.user.character.mapId = updatedChar.mapId;
+      }
+
+      client.emit('serverMessage', 'Protocolo de Reconstrução Concluído. Sistemas reiniciados em local seguro.');
+
+      // Atualizar view do jogador para a nova sala
+      // Como o ID mudou, o sendRoomDataToClient vai pegar os dados da nova sala
+      await this.sendRoomDataToClient(client);
+
+    } catch (error) {
+      console.error('Erro no respawn:', error);
+      client.emit('serverMessage', 'Falha crítica na reconstrução.');
+    }
   }
 
   @SubscribeMessage('startCombat')
@@ -632,6 +696,7 @@ export class GameGateway
       return;
     }
 
+    console.log(`[InteractNPC] BUSCANDO: ${npcInstanceId}`);
     try {
       const npcInstance = await this.prisma.nPCInstance.findUnique({
         where: { id: npcInstanceId },
@@ -639,19 +704,22 @@ export class GameGateway
       });
 
       if (!npcInstance) {
+        console.log(`[InteractNPC] NPC Instance NÃO ENCONTRADA no DB.`);
         client.emit('serverMessage', 'NPC não encontrado.');
         return;
       }
+      console.log(`[InteractNPC] ENCONTRADO: ${npcInstance.template.name} (Template ID: ${npcInstance.template.id})`);
 
       // Lógica de Diálogo Contextual
       // Tenta ler o final do prólogo (se existir)
-      const prologueData = client.data.user.character.prologueData as any || {};
+      const prologueData = client.data.user?.character?.prologueData as any || {};
       const prologueEnding = prologueData.ending; // 'ENTER_PORTAL' | 'CAUGHT_CITADEL'
 
       let dialogue = '"..." (Ele não parece querer conversar.)';
 
       // 1. Guarda da Cidadela
-      if (npcInstance.template.name.includes('Guarda')) {
+      if (npcInstance.template.id.includes('guard')) {
+        console.log('[InteractNPC] Lógica: Guarda');
         if (prologueEnding === 'CAUGHT_CITADEL') {
           dialogue = '"Volte para a fila, rato. Sua reeducação ainda não acabou."';
         } else if (prologueEnding === 'ENTER_PORTAL') {
@@ -661,20 +729,50 @@ export class GameGateway
         }
       }
       // 2. Supervisor / Autoridade
-      else if (npcInstance.template.name.includes('Supervisor')) {
+      else if (npcInstance.template.id.includes('supervisor')) {
+        console.log('[InteractNPC] Lógica: Supervisor');
         dialogue = '"Anomalias detectadas. O sistema será purgado."';
       }
-      // 3. Monstros / Outros
+      // 3. Velho Escriba (Quest Giver)
+      else if (npcInstance.template.id === 'npc_template_old_mentor' || npcInstance.template.name.includes('Velho')) {
+        console.log('[InteractNPC] Lógica: Velho Escriba');
+        dialogue = '"Ah, um novo desperto... Eu sinto o Eco vibrando em você. O Arquiteto tem planos, mas primeiro... você precisa sobreviver."';
+      }
+      // 4. Monstros / Outros
       else if (npcInstance.template.isHostile) {
+        console.log('[InteractNPC] Lógica: Hostil');
         dialogue = '"Grrr..." (A criatura te encara com hostilidade)';
       }
+      // 5. BAÚ DO TUTORIAL (REWARD CHEST)
+      else if (npcInstance.template.id === 'npc_chest_tutorial') {
+        console.log('[InteractNPC] Lógica: Baú Tutorial');
+
+        const rankFKeywords = ['Brasa', 'Orvalho', 'Brisa', 'Poeira'];
+        const randomKw = rankFKeywords[Math.floor(Math.random() * rankFKeywords.length)];
+
+        // Tenta dar a keyword
+        const gained = await this.ecoService.grantKeywordToCharacter(characterId, randomKw);
+
+        if (gained) {
+          dialogue = `[SISTEMA]: Acesso Autorizado. Você obteve um Eco Instável: ${randomKw}.`;
+          client.emit('playSfx', 'success');
+        } else {
+          // Fallback: Se já tiver a keyword, dar um item
+          dialogue = `[SISTEMA]: Eco redundante detectado. Convertendo em suprimentos...`;
+          await this.inventoryService.addItem(characterId, 'item_small_eco_battery', 1);
+          client.emit('serverMessage', 'Você recebeu: Bateria de Eco Pequena');
+          client.emit('playSfx', 'loot');
+        }
+      }
       else {
+        console.log('[InteractNPC] Lógica: Fallback / Default');
         // Fallback para NPCs genéricos ou template
         dialogue = npcInstance.template.stats && (npcInstance.template.stats as any).dialogue
           ? (npcInstance.template.stats as any).dialogue
           : dialogue;
       }
 
+      console.log(`[InteractNPC] Enviando diálogo: "${dialogue}"`);
       client.emit('npcDialogue', {
         npcName: npcInstance.template.name,
         dialogue: dialogue,
@@ -858,6 +956,11 @@ export class GameGateway
 
   // --- LÓGICA DO PRÓLOGO (VIA SERVICE) ---
 
+  @SubscribeMessage('requestPrologueState')
+  async handleRequestPrologueState(@ConnectedSocket() client: SocketWithAuth) {
+    this.triggerPrologueEvent(client);
+  }
+
   private async triggerPrologueEvent(client: SocketWithAuth) {
     const characterId = client.data.user?.character?.id;
     if (!characterId) return;
@@ -949,6 +1052,9 @@ export class GameGateway
         });
         if (updatedUser) {
           client.data.user = updatedUser;
+          // Sync client state
+          client.emit('profileUpdate', updatedUser);
+
           // Força atualização da sala para o cliente
           await this.handlePlayerLook(client);
         }
@@ -984,11 +1090,83 @@ export class GameGateway
 
   // --- FIM DA LÓGICA DO PRÓLOGO ---
 
+  // --- DEV TOOLS ---
+  @SubscribeMessage('adminRespawn')
+  async handleAdminRespawn(@ConnectedSocket() client: SocketWithAuth) {
+    if (!client.data.user?.email) return;
+    console.log(`[GameGateway] Admin Respawn (Heal/Create) requested by ${client.data.user.email}`);
+    const ROOM_ID_START = 'cl_starter_room';
+
+    // SLIME
+    const existingSlime = await this.prisma.nPCInstance.findFirst({
+      where: { mapId: ROOM_ID_START, templateId: 'mon_slime_mana' }
+    });
+
+    if (existingSlime) {
+      // Heal existing (even if dead)
+      const t = await this.prisma.nPCTemplate.findUnique({ where: { id: 'mon_slime_mana' } });
+      const maxHp = (t?.stats as any)?.hp || 50;
+      await this.prisma.nPCInstance.update({
+        where: { id: existingSlime.id },
+        data: { currentHp: maxHp }
+      });
+      client.emit('serverMessage', 'Slime Revivido (Healed)!');
+    } else {
+      // Create new
+      const t = await this.prisma.nPCTemplate.findUnique({ where: { id: 'mon_slime_mana' } });
+      if (t) {
+        await this.prisma.nPCInstance.create({
+          data: {
+            templateId: 'mon_slime_mana',
+            mapId: ROOM_ID_START,
+            currentHp: (t.stats as any).hp || 50,
+            // maxHp: removed because not in schema
+          }
+        });
+        client.emit('serverMessage', 'Slime Criado!');
+      }
+    }
+
+    // GOBLIN
+    const existingGoblin = await this.prisma.nPCInstance.findFirst({
+      where: { mapId: ROOM_ID_START, templateId: 'mon_goblin_peon' }
+    });
+
+    if (existingGoblin) {
+      const t = await this.prisma.nPCTemplate.findUnique({ where: { id: 'mon_goblin_peon' } });
+      const maxHp = (t?.stats as any)?.hp || 80;
+      await this.prisma.nPCInstance.update({
+        where: { id: existingGoblin.id },
+        data: { currentHp: maxHp }
+      });
+      client.emit('serverMessage', 'Goblin Revivido (Healed)!');
+    } else {
+      const t = await this.prisma.nPCTemplate.findUnique({ where: { id: 'mon_goblin_peon' } });
+      if (t) {
+        await this.prisma.nPCInstance.create({
+          data: {
+            templateId: 'mon_goblin_peon',
+            mapId: ROOM_ID_START,
+            currentHp: (t.stats as any).hp || 80,
+            // maxHp: removed
+          }
+        });
+        client.emit('serverMessage', 'Goblin Criado!');
+      }
+    }
+
+    // Force room update for everyone in the room
+    await this.handlePlayerLook(client);
+  }
+
+
+
   // --- OUVINTES DE EVENTOS ---
   @OnEvent('combat.win.stats')
   handleCombatWinStatsEvent(payload: {
     playerId: string;
     newTotalXp: string;
+    xpGained: number; // NOVO
     goldGained: number;
     newLevel?: number;
   }) {
@@ -996,6 +1174,7 @@ export class GameGateway
     if (clientSocket)
       clientSocket.emit('playerUpdated', {
         newTotalXp: payload.newTotalXp,
+        xpGained: payload.xpGained, // NOVO
         goldGained: payload.goldGained,
         newLevel: payload.newLevel,
       });
@@ -1136,6 +1315,20 @@ export class GameGateway
         players: otherPlayers,
         npcs: npcsInRoom,
       });
+    }
+  }
+
+  @OnEvent('character.totalStats.updated')
+  handleCharacterTotalStatsEvent(payload: {
+    characterId: string;
+    totalStats: CharacterTotalStats;
+  }) {
+    const socket = this.getClientSocket(payload.characterId);
+    if (socket) {
+      console.log(
+        `[GameGateway] Enviando playerStatsUpdated para ${payload.characterId}`,
+      );
+      socket.emit('playerStatsUpdated', payload.totalStats);
     }
   }
 }

@@ -60,6 +60,7 @@ interface ClientToServerEvents {
   prologueInteract: (payload: { targetId?: string }) => void; // Interagir com terminal, duto, etc.
   prologueChoice: (payload: { choiceId: string }) => void;
   requestQuests: () => void; // NOVO
+  adminRespawn: () => void; // NOVO: Dev util
 }
 
 // 2. Usamos 'Record<string, never>'
@@ -84,6 +85,7 @@ interface ServerToClientEvents {
   combatEnd: (result: 'win' | 'loss' | 'flee') => void; // NOVO: Fim do combate
   playerUpdated: (payload: {
     newTotalXp: string; // XP como string (BigInt)
+    xpGained: number; // NOVO: XP ganho nesta ação
     goldGained: number;
     newLevel?: number; // Opcional, se houver level up
   }) => void;
@@ -102,6 +104,8 @@ interface ServerToClientEvents {
   playerBaseStatsUpdated: (payload: BaseStatsPayload) => void; // <-- NOVO EVENTO
   prologueUpdate: (payload: PrologueUpdatePayload) => void;
   updateQuests: (payload: { quests: any[] }) => void; // NOVO
+  // ...
+  profileUpdate: (payload: UserPayload) => void;
   playSfx: (sfxName: string) => void;
 }
 

@@ -12,6 +12,7 @@ import { EffectsDisplay } from '../components/EffectsDisplay';
 import { CharacterStatsDisplay } from '../components/CharacterStatsDisplay';
 import { PrologueDisplay } from '../components/PrologueDisplay';
 import { QuestDisplay } from '../components/QuestDisplay';
+import { VictoryDisplay } from '../components/VictoryDisplay'; // Importado
 import toast from 'react-hot-toast'; // CORRIGIDO: Removido 'Toaster'
 import type {
     CombatUpdatePayload,
@@ -240,13 +241,6 @@ const styles: Record<string, React.CSSProperties> = {
         marginLeft: '5px',
         fontSize: '0.8em',
         fontWeight: 'bold',
-    },
-    loadingContainer: {
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        height: '100%',
-        color: 'var(--color-renegade-cyan)',
     }
 };
 
@@ -275,6 +269,36 @@ export function GamePage() {
     const [showStats, setShowStats] = useState(false);
     const [isTransitioningUI, setIsTransitioningUI] = useState(false);
     const [prologueData, setPrologueData] = useState<PrologueUpdatePayload | null>(null);
+
+    // --- VICTORY SCREEN STATE ---
+    const [victoryData, setVictoryData] = useState<{
+        xpGained: number;
+        goldGained: number;
+        newLevel?: number;
+        drops: LootDropPayload[];
+    } | null>(null);
+
+    // --- DEATH STATE ---
+    const [isDead, setIsDead] = useState(false);
+
+    // Efeito de Glitch Ambiental para Dungeon Tutorial
+    const [isGlitchActive, setIsGlitchActive] = useState(false);
+
+    useEffect(() => {
+        if (user?.character?.mapId?.startsWith('td_room_')) {
+            setIsGlitchActive(true);
+        } else {
+            setIsGlitchActive(false);
+        }
+    }, [user?.character?.mapId]);
+
+    const pendingVictoryData = useRef<{
+        xpGained: number;
+        goldGained: number;
+        newLevel?: number;
+        drops: LootDropPayload[];
+    }>({ xpGained: 0, goldGained: 0, drops: [] });
+    // ----------------------------
 
     const userRef = useRef(user);
     const updateProfileRef = useRef(updateProfile);
@@ -351,12 +375,14 @@ export function GamePage() {
 
     }, [combatData, isAwakened, playAmbience, user?.character?.level, playSfx]);
 
-    const handleRespawn = () => {
-        // Placeholder refresh or specific socket emit if we had one.
-        // For now, simple reload/reset simulation or emit a heal debug command
-        playSfx('respawn');
-        window.location.reload();
-    };
+    const handleRespawn = useCallback(() => {
+        if (socket) {
+            socket.emit('playerRespawn');
+            playSfx('respawn');
+            setIsDead(false);
+            setCombatData(null);
+        }
+    }, [socket, playSfx]);
 
     const hasUnspentPoints = (user?.character?.attributePoints ?? 0) > 0;
 
@@ -368,7 +394,18 @@ export function GamePage() {
             console.log('[Socket] Recebido prologueUpdate:', payload);
             setPrologueData(payload);
         };
+        const handleProfileUpdate = (payload: any) => {
+            console.log('[Socket] Profile Updated:', payload);
+            updateProfile(payload);
+        };
+
         socket.on('prologueUpdate', handlePrologueUpdate);
+        socket.on('profileUpdate', handleProfileUpdate);
+
+        // Se estiver no prólogo, pede o estado atual imediatamente (importante para refresh)
+        if (inPrologue) {
+            socket.emit('requestPrologueState');
+        }
         // --- FIM LISTENERS PRÓLOGO ---
 
         const handleUpdateRoom = (data: RoomData) => {
@@ -376,6 +413,7 @@ export function GamePage() {
             setCombatData(null);
         };
         const handleNpcDialogue = (payload: { npcName: string; dialogue: string }) => {
+            console.log('[GamePage] RECEBIDO DIÁLOGO:', payload);
             toast((t) => (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                     <span style={{ fontWeight: 'bold', color: 'var(--color-citadel-glow)' }}>{payload.npcName} diz:</span>
@@ -387,6 +425,8 @@ export function GamePage() {
                 style: {
                     borderLeft: '4px solid var(--color-citadel-glow)',
                     background: 'rgba(10, 20, 30, 0.95)',
+                    color: '#fff',
+                    zIndex: 9999, // Forçar visibilidade
                 }
             });
         };
@@ -424,28 +464,55 @@ export function GamePage() {
         };
 
         const handleCombatEnd = (result: 'win' | 'loss' | 'flee') => {
-            if (result === 'win') toast.success('VITÓRIA!', { icon: '🏆' });
-            else if (result === 'loss') toast.error('Derrota...', { icon: '💀' });
-            else toast('Fugiu da batalha.', { icon: '💨' });
-            setCombatData(null);
-            socket.emit('playerLook');
+            if (result === 'win') {
+                // VITÓRIA: Mostrar tela de vitória e NÃO limpar combatData ainda
+                setVictoryData({ ...pendingVictoryData.current });
+                playSfx('success'); // Som de vitória extra
+            }
+            else {
+                // DERROTA/FUGA
+                if (result === 'loss') {
+                    playSfx('gameover'); // Assumes 'gameover' sfx exists, or use 'loss'
+                    setIsDead(true);
+                    // Do NOT clear combatData immediately if we want to show last state?
+                    // Actually DeathScreen covers everything.
+                    setCombatData(null);
+                } else {
+                    toast('Fugiu da batalha.', { icon: '💨' });
+                    setCombatData(null);
+                    socket.emit('playerLook');
+                }
+            }
         };
 
         // **** LÓGICA DE LEVEL UP CORRIGIDA ****
         const handlePlayerUpdated = (payload: {
             newTotalXp: string;
+            xpGained: number; // NOVO: Explicito
             goldGained: number;
             newLevel?: number;
         }) => {
             try {
                 const currentUser = userRef.current;
-                const currentXpBigInt = currentUser?.character?.xp ?? BigInt(0);
-                const newTotalXpBigInt = BigInt(payload.newTotalXp);
-                const xpGained = newTotalXpBigInt - currentXpBigInt;
-                const levelMsg = payload.newLevel ? ` e subiu para o Nível ${payload.newLevel}!` : '.';
-                const alertMsg = `🎉 Ganhou ${xpGained.toString()} XP e ${payload.goldGained} Ouro${levelMsg}`;
 
-                toast.success(alertMsg, { duration: 5000 });
+                // Use explicit value from server to avoid race conditions
+                const xpGained = payload.xpGained;
+
+                // Accumulate for Victory Screen
+                if (combatData?.isActive || activePanel === 'CONTEXT') {
+                    pendingVictoryData.current.xpGained = xpGained;
+                    pendingVictoryData.current.goldGained = payload.goldGained;
+                    pendingVictoryData.current.newLevel = payload.newLevel;
+                }
+
+                const alertMsg = payload.newLevel
+                    ? `🎉 NÍVEL ${payload.newLevel}! (+${xpGained} XP, +${payload.goldGained} Ouro)`
+                    : `+${xpGained} XP, +${payload.goldGained} Ouro`;
+
+                if (!combatData?.isActive) {
+                    toast.success(alertMsg, { duration: 4000 });
+                }
+
                 const newGoldTotal = (currentUser?.character?.gold ?? 0) + payload.goldGained;
                 updateProfileRef.current({
                     character: {
@@ -461,8 +528,15 @@ export function GamePage() {
 
         const handleLootReceived = (payload: { drops: LootDropPayload[] }) => {
             if (payload.drops.length > 0) {
+                // Accumulate for Victory Screen
+                if (combatData?.isActive || activePanel === 'CONTEXT') {
+                    pendingVictoryData.current.drops = payload.drops;
+                }
+
                 const lootMessage = payload.drops.map(d => `${d.quantity}x ${d.itemName}`).join(', ');
-                toast(`💰 Loot: ${lootMessage}`, { icon: '🪙', duration: 5000 });
+                if (!combatData?.isActive) {
+                    toast(`💰 Loot: ${lootMessage}`, { icon: '🪙', duration: 4000 });
+                }
             }
         };
 
@@ -537,6 +611,7 @@ export function GamePage() {
 
         handleRequestLearnedSkills();
         socket.emit('requestQuests');
+        socket.emit('playerLook'); // Force initial room load
 
         // Limpeza
         return () => {
@@ -570,7 +645,17 @@ export function GamePage() {
     }, [socket]);
 
     const handleStartCombat = useCallback(() => {
+        // Reset Victory Data for new combat
+        pendingVictoryData.current = { xpGained: 0, goldGained: 0, drops: [] };
         if (socket) socket.emit('startCombat');
+    }, [socket]);
+
+    const handleVictoryContinue = useCallback(() => {
+        setVictoryData(null);
+        setCombatData(null);
+        socket.emit('playerLook');
+        // Reset pending (redundant but safe)
+        pendingVictoryData.current = { xpGained: 0, goldGained: 0, drops: [] };
     }, [socket]);
 
     const handleAttack = useCallback(() => {
@@ -630,6 +715,11 @@ export function GamePage() {
 
     const handleLook = useCallback(() => {
         if (socket) socket.emit('playerLook');
+    }, [socket]);
+
+    // DEV: RESPAWN
+    const handleDevRespawn = useCallback(() => {
+        if (socket) socket.emit('adminRespawn');
     }, [socket]);
 
     // Ações da Sala (Botões contextuais)
@@ -763,12 +853,45 @@ export function GamePage() {
 
                 {/* ATRIBUTOS RESUMO */}
                 <div style={{ marginTop: '20px', ...styles.panelSection }}>
-                    <h4 style={{ margin: '0 0 10px 0', fontSize: '0.8em', color: '#666' }}>ATRIBUTOS PRINCIPAIS</h4>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '0.8em' }}>
-                        <div>STR: <span style={{ color: '#fff' }}>{user?.character?.strength}</span></div>
-                        <div>DEX: <span style={{ color: '#fff' }}>{user?.character?.dexterity}</span></div>
-                        <div>INT: <span style={{ color: '#fff' }}>{user?.character?.intelligence}</span></div>
-                        <div>CON: <span style={{ color: '#fff' }}>{user?.character?.constitution}</span></div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <h4 style={{ margin: '0 0 10px 0', fontSize: '0.8em', color: '#666' }}>ATRIBUTOS</h4>
+                        {/* Show Available Points if > 0 */}
+                        {(user?.character?.attributePoints ?? 0) > 0 && (
+                            <span style={{ color: 'var(--color-highlight)', fontSize: '0.8em', fontWeight: 'bold' }}>
+                                +{user?.character?.attributePoints} Pts
+                            </span>
+                        )}
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '5px', fontSize: '0.8em' }}>
+                        {['strength', 'dexterity', 'intelligence', 'constitution'].map(attr => (
+                            <div key={attr} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ textTransform: 'uppercase', color: '#aaa' }}>{attr.substring(0, 3)}</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                    <span style={{ color: '#fff' }}>{(user?.character as any)?.[attr]}</span>
+                                    {(user?.character?.attributePoints ?? 0) > 0 && (
+                                        <button
+                                            onClick={() => socket?.emit('spendAttributePoint', { attribute: attr })}
+                                            style={{
+                                                background: 'var(--color-highlight)',
+                                                border: 'none',
+                                                color: '#000',
+                                                borderRadius: '50%',
+                                                width: '16px',
+                                                height: '16px',
+                                                lineHeight: '16px',
+                                                textAlign: 'center',
+                                                cursor: 'pointer',
+                                                fontSize: '10px',
+                                                padding: 0
+                                            }}
+                                        >
+                                            +
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
 
@@ -780,6 +903,42 @@ export function GamePage() {
 
             {/* --- CENTER PANEL: MAIN CONTENT (GRID ROW 2, COL 2) --- */}
             <main style={styles.centerPanel}>
+
+                {/* DEV BUTTON - Force Top Right */}
+                <button
+                    onClick={handleRespawn}
+                    style={{
+                        position: 'absolute',
+                        top: '10px',
+                        right: '10px',
+                        zIndex: 9999,
+                        background: 'rgba(255, 0, 0, 0.7)',
+                        color: 'white',
+                        fontSize: '0.8em',
+                        padding: '5px 10px',
+                        border: '1px solid #f00',
+                        cursor: 'pointer'
+                    }}
+                >
+                    DEV: RESPAWN
+                </button>
+
+                {/* VICTORY OVERLAY */}
+                {victoryData && (
+                    <VictoryDisplay
+                        xpGained={victoryData.xpGained}
+                        goldGained={victoryData.goldGained}
+                        newLevel={victoryData.newLevel}
+                        drops={victoryData.drops}
+                        onContinue={handleVictoryContinue}
+                    />
+                )}
+
+                {/* DEATH OVERLAY */}
+                {isDead && (
+                    <DeathScreen onRespawn={handleRespawn} />
+                )}
+
                 <div style={styles.backgroundImagePlaceholder}>
                     <div className="scanlines" style={{ zIndex: 0, position: 'absolute', inset: 0, pointerEvents: 'none' }}></div>
                 </div>

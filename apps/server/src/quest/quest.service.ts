@@ -1,12 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { QuestStatus } from '@prisma/client';
+import { InventoryService } from 'src/inventory/inventory.service';
 
 @Injectable()
 export class QuestService {
     private readonly logger = new Logger(QuestService.name);
 
-    constructor(private prisma: PrismaService) { }
+    constructor(
+        private prisma: PrismaService,
+        private inventoryService: InventoryService
+    ) { }
 
     async getActiveQuests(characterId: string) {
         return this.prisma.characterQuest.findMany({
@@ -149,9 +153,11 @@ export class QuestService {
 
         // Items
         if (rewards.itemId) {
-            // Precisaria do InventoryService aqui para ser limpo.
-            // Vou deixar TODO ou injetar InventoryService se der. Evitar dependência circular.
-            // Melhor retornar as recompensas e o Gateway chama o InventoryService.
+            try {
+                await this.inventoryService.addItemToInventory(characterId, rewards.itemId, rewards.itemQuantity || 1);
+            } catch (e) {
+                this.logger.error(`Failed to add reward item ${rewards.itemId} to ${characterId}`, e);
+            }
         }
 
         this.logger.log(`Character ${characterId} completed quest ${quest.title}`);

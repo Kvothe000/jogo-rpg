@@ -424,12 +424,17 @@ async function main() {
     },
   });
   // --- NOVOS CONSUMÍVEIS ---
+  const ITEM_SMALL_HEALTH_POTION = 'item_small_health_potion';
+
+  // REMOVED DUPLICATE BLOCK FOR ITEM_BATERIA_ECO_PEQUENA
+  // Using ITEM_SMALL_ECO_BATTERY defined below instead.
+
   await prisma.item.upsert({
     where: { id: ITEM_SMALL_HEALTH_POTION },
     update: {},
     create: {
       id: ITEM_SMALL_HEALTH_POTION,
-      name: 'Poção de Vida Pequena',
+      name: 'Poção de Vida Menor',
       description: 'Recupera uma pequena quantidade de HP.',
       type: 'CONSUMABLE',
       effectData: { healHp: 50 }, // Recupera 50 de HP
@@ -442,7 +447,7 @@ async function main() {
     update: {},
     create: {
       id: ITEM_SMALL_ECO_BATTERY,
-      name: 'Bateria de Eco Pequena',
+      name: 'Bateria de Eco Menor',
       description: 'Recupera uma pequena quantidade de Eco.',
       type: 'CONSUMABLE',
       effectData: { restoreEco: 25 }, // Recupera 25 de Eco
@@ -795,7 +800,235 @@ async function main() {
   console.log('Primeira Quest e Mentor adicionados.');
 
 
-  console.log('Seed v9 concluído.');
+  // --- 10. TUTORIAL DUNGEON (The Forgotten Conduits) ---
+  console.log('Criando Tutorial Dungeon...');
+
+  // Rooms
+  const TD_ROOM_1 = 'td_room_01_entrance';
+  const TD_ROOM_2 = 'td_room_02_combat';
+  const TD_ROOM_3 = 'td_room_03_puzzle';
+  const TD_ROOM_4 = 'td_room_04_boss';
+  const TD_ROOM_5 = 'td_room_05_reward';
+
+  const roomsData = [
+    {
+      id: TD_ROOM_1,
+      name: 'Entrada dos Condutos',
+      description: 'O portal te cospe em um túnel úmido e antigo. Tubos enferrujados correm pelas paredes como veias metálicas. O ar cheira a ozônio e mofo. Há apenas um caminho a seguir: LESTE, para a escuridão.',
+      exits: { leste: TD_ROOM_2 }, // Entrada só vai pra frente
+    },
+    {
+      id: TD_ROOM_2,
+      name: 'Câmara de Bloqueio',
+      description: 'Uma sala pequena bloqueada por destroços, mas com espaço suficiente para se mover. Marcas de garras nas paredes indicam que algo vive aqui. A saída continua a LESTE. O caminho de volta está a OESTE.',
+      exits: { leste: TD_ROOM_3, oeste: TD_ROOM_1 },
+    },
+    {
+      id: TD_ROOM_3,
+      name: 'Intersecção do Filtro',
+      description: 'O túnel se divide brevemente ao redor de uma grande turbina parada. Há um brilho fraco vindo do NORTE. O caminho de onde veio fica a OESTE.',
+      exits: { norte: TD_ROOM_4, oeste: TD_ROOM_2 },
+    },
+    {
+      id: TD_ROOM_4,
+      name: 'Ninho do Guardião',
+      description: 'Uma câmara ampla com o teto alto. No centro, uma massa de cabos e carne pulsa ritmicamente. É o covil de algo. Uma porta reforçada está ao NORTE. SUL leva de volta à turbina.',
+      exits: { norte: TD_ROOM_5, sul: TD_ROOM_3 },
+    },
+    {
+      id: TD_ROOM_5,
+      name: 'Câmara da Recompensa',
+      description: 'Uma sala secreta e silenciosa, intocada pelo tempo. No centro, sobre um pedestal, repousa um <span class="highlight-interact">Baú Antigo</span>. Não há outra saída além de voltar para o SUL.',
+      exits: { sul: TD_ROOM_4 },
+    },
+  ];
+
+  for (const room of roomsData) {
+    await prisma.gameMap.upsert({
+      where: { id: room.id },
+      update: { exits: room.exits }, // Atualiza exits se já existir
+      create: room,
+    });
+  }
+
+  // --- 11. RANK F ECOSYSTEM (Proto-Ecos) ---
+  const KW_BRASA = 'kw_brasa'; // Fogo F
+  const KW_ORVALHO = 'kw_orvalho'; // Água F
+  const KW_BRISA = 'kw_brisa'; // Ar F (Novo elemento, mas usaremos lógica básica)
+  const KW_POEIRA = 'kw_poeira'; // Terra F (Novo)
+
+  await prisma.powerKeyword.upsert({
+    where: { id: KW_BRASA },
+    update: {},
+    create: { id: KW_BRASA, name: 'Brasa', description: 'Uma pequena fagulha de calor.', rank: 'F' },
+  });
+  await prisma.powerKeyword.upsert({
+    where: { id: KW_ORVALHO },
+    update: {},
+    create: { id: KW_ORVALHO, name: 'Orvalho', description: 'Um vestígio de humidade.', rank: 'F' },
+  });
+  await prisma.powerKeyword.upsert({
+    where: { id: KW_BRISA },
+    update: {},
+    create: { id: KW_BRISA, name: 'Brisa', description: 'Um sopro de ar leve.', rank: 'F' },
+  });
+  await prisma.powerKeyword.upsert({
+    where: { id: KW_POEIRA },
+    update: {},
+    create: { id: KW_POEIRA, name: 'Poeira', description: 'Partículas soltas de terra.', rank: 'F' },
+  });
+
+  // Skills Rank F (Custo 5 Eco)
+  const SKILL_FAISCA = 'sk_faisca';
+  const SKILL_GOTA = 'sk_gota';
+  const SKILL_SOPRO = 'sk_sopro';
+  const SKILL_PEDRINHA = 'sk_pedrinha';
+
+  const rankFSkills = [
+    {
+      id: SKILL_FAISCA,
+      name: 'Faísca',
+      description: 'Uma pequena chama que causa dano leve.',
+      ecoCost: 5,
+      effectData: { type: 'damage', value: 8, element: 'fire' },
+      keywords: [KW_BRASA]
+    },
+    {
+      id: SKILL_GOTA,
+      name: 'Gota Ácida',
+      description: 'Um pingo corrosivo.',
+      ecoCost: 5,
+      effectData: { type: 'damage', value: 8, element: 'water' }, // Simplificação
+      keywords: [KW_ORVALHO]
+    },
+    {
+      id: SKILL_SOPRO,
+      name: 'Lufada',
+      description: 'Empurra o ar contra o inimigo.',
+      ecoCost: 5,
+      effectData: { type: 'damage', value: 8, element: 'physical' },
+      keywords: [KW_BRISA]
+    },
+    {
+      id: SKILL_PEDRINHA,
+      name: 'Jogar Terra',
+      description: 'Cega momentaneamente o inimigo com poeira.',
+      ecoCost: 6,
+      effectData: [
+        { type: 'damage', value: 3, element: 'earth' },
+        { type: 'debuff', stat: 'accuracy', value: -0.1, duration: 2, chance: 0.8 }
+      ],
+      keywords: [KW_POEIRA]
+    }
+  ];
+
+  for (const skill of rankFSkills) {
+    await prisma.skill.upsert({
+      where: { id: skill.id },
+      update: {},
+      create: {
+        id: skill.id,
+        name: skill.name,
+        description: skill.description,
+        ecoCost: skill.ecoCost,
+        effectData: skill.effectData as any,
+        requiredKeywords: { connect: skill.keywords.map(id => ({ id })) }
+      }
+    });
+  }
+
+  // --- 12. POPULATE DUNGEON ---
+  // Reward Chest (NPC Imóvel)
+  const NPC_TEMPLATE_CHEST = 'npc_chest_tutorial';
+  await prisma.nPCTemplate.upsert({
+    where: { id: NPC_TEMPLATE_CHEST },
+    update: {},
+    create: {
+      id: NPC_TEMPLATE_CHEST,
+      name: 'Baú Antigo',
+      description: 'Um baú de metal reforçado, pulsando com energia residual.',
+      isHostile: false,
+      rank: 'F',
+      stats: {
+        isInteractable: true,
+        dialogue: '[SYSTEM]: Acesso concedido. Recompensa liberada.'
+        // A lógica de dar o item será feita no código do Gateway/Service ao interagir
+      },
+      types: ['object', 'chest']
+    }
+  });
+
+  // Instância do Baú na Sala 5
+  await prisma.nPCInstance.create({
+    data: {
+      templateId: NPC_TEMPLATE_CHEST,
+      mapId: TD_ROOM_5,
+    }
+  });
+
+  // Inimigos
+  // Sala 2: Ratos de Cabo (Novo Inimigo fraco)
+  const MON_CABLE_RAT = 'mon_cable_rat';
+  await prisma.nPCTemplate.upsert({
+    where: { id: MON_CABLE_RAT },
+    update: {},
+    create: {
+      id: MON_CABLE_RAT,
+      name: 'Rato de Cabo',
+      description: 'Um roedor mutante que morde fios elétricos.',
+      isHostile: true,
+      rank: 'F',
+      stats: {
+        hp: 20, // Nerfed from 30
+        attack: 3, // Nerfed from 4
+        defense: 0,
+        xp: 15,
+        goldMin: 1,
+        goldMax: 3,
+        level: 1,
+        skills: [{ name: 'Mordida', chance: 0.4, effectData: { type: 'damage', value: 3 } }]
+      },
+      types: ['beast']
+    }
+  });
+
+  await prisma.nPCInstance.create({ data: { templateId: MON_CABLE_RAT, mapId: TD_ROOM_2, currentHp: 20 } });
+  await prisma.nPCInstance.create({ data: { templateId: MON_CABLE_RAT, mapId: TD_ROOM_2, currentHp: 20 } }); // Dois ratos
+  await prisma.nPCInstance.create({ data: { templateId: MON_CABLE_RAT, mapId: TD_ROOM_2, currentHp: 20 } }); // Três ratos (User Request)
+
+  // Sala 4: Chefe Tutorial (Sentinela Defeituosa)
+  const MON_BROKEN_SENTRY = 'mon_broken_sentry';
+  await prisma.nPCTemplate.upsert({
+    where: { id: MON_BROKEN_SENTRY },
+    update: {},
+    create: {
+      id: MON_BROKEN_SENTRY,
+      name: 'Sentinela Defeituosa',
+      description: 'Um robô de segurança da Cidadela, soltando faíscas e óleo.',
+      isHostile: true,
+      rank: 'E',
+      stats: {
+        hp: 60, // Nerfed from 100
+        attack: 5, // Nerfed from 8
+        defense: 1, // Nerfed from 3
+        xp: 80,
+        goldMin: 20,
+        goldMax: 50,
+        level: 2,
+        resistances: { physical: 0.2, lightning: -0.2 },
+        skills: [
+          { name: 'Choque Estático', chance: 0.3, effectData: { type: 'damage', value: 6, element: 'lightning' } } // Nerfed from 10
+        ]
+      },
+      types: ['construct', 'machine']
+    }
+  });
+
+  await prisma.nPCInstance.create({ data: { templateId: MON_BROKEN_SENTRY, mapId: TD_ROOM_4, currentHp: 100 } });
+
+  console.log('Tutorial Dungeon populada.');
+
+  console.log('Seed v10 concluído.');
 }
 
 main()

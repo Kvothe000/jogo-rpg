@@ -23,6 +23,7 @@ export function CombatDisplay({ combatData, learnedSkills, onAttack, onUseSkill 
     const { playSfx } = useAudio();
     const [damageNumbers, setDamageNumbers] = useState<DamageNumber[]>([]);
     const [isMonsterShaking, setIsMonsterShaking] = useState(false);
+    const [showSlash, setShowSlash] = useState(false);
 
     // Refs to track previous HP to detect value changes
     const prevMonsterHp = useRef(combatData.monsterHp);
@@ -60,6 +61,8 @@ export function CombatDisplay({ combatData, learnedSkills, onAttack, onUseSkill 
 
     const handleAttackClick = () => {
         playSfx('attack');
+        setShowSlash(true);
+        setTimeout(() => setShowSlash(false), 200); // Reset animation
         onAttack();
     };
 
@@ -77,6 +80,16 @@ export function CombatDisplay({ combatData, learnedSkills, onAttack, onUseSkill 
             height: '100%',
             gap: '20px',
             position: 'relative' as const,
+        },
+        turnIndicator: {
+            padding: '5px 15px',
+            borderRadius: '4px',
+            border: '1px solid',
+            marginBottom: '10px',
+            fontSize: '0.9em',
+            textTransform: 'uppercase' as const,
+            fontWeight: 'bold',
+            transition: 'all 0.3s',
         },
         monsterContainer: {
             position: 'relative' as const,
@@ -143,6 +156,17 @@ export function CombatDisplay({ combatData, learnedSkills, onAttack, onUseSkill 
 
     return (
         <div style={styles.container}>
+            {/* TURN INDICATOR */}
+            <div style={{
+                ...styles.turnIndicator,
+                backgroundColor: combatData.isPlayerTurn ? 'rgba(0,100,0,0.3)' : 'rgba(100,0,0,0.3)',
+                borderColor: combatData.isPlayerTurn ? 'var(--color-success)' : 'var(--color-danger)',
+                color: combatData.isPlayerTurn ? 'var(--color-success)' : 'var(--color-danger)',
+                boxShadow: combatData.isPlayerTurn ? '0 0 10px rgba(0,255,0,0.2)' : 'none'
+            }}>
+                {combatData.isPlayerTurn ? '>> SEU TURNO <<' : 'TURNO INIMIGO'}
+            </div>
+
             {/* MONSTER DISPLAY */}
             <div
                 style={styles.monsterContainer}
@@ -157,6 +181,9 @@ export function CombatDisplay({ combatData, learnedSkills, onAttack, onUseSkill 
                 <div style={{ fontSize: '0.8em', marginTop: '5px', color: '#aaa' }}>
                     HP: {combatData.monsterHp} / {combatData.monsterMaxHp}
                 </div>
+
+                {/* SLASH EFFECT */}
+                {showSlash && <div className="slash-effect"></div>}
 
                 {/* Floating Damage Numbers */}
                 {damageNumbers.map(dn => (

@@ -189,7 +189,7 @@ export class PrologueService {
             let endMessage = 'Prólogo Finalizado.';
 
             if (choiceId === 'ENTER_PORTAL') {
-                targetRoom = 'cl_starter_room';
+                targetRoom = 'td_room_01_entrance'; // Leads to Tutorial Dungeon
                 endMessage = 'Prólogo Finalizado via Portal.';
             } else if (choiceId === 'CAUGHT_CITADEL') {
                 targetRoom = 'cl_hallway_01';
@@ -220,7 +220,7 @@ export class PrologueService {
                     this.logger.error(`Failed to start first quest for ${characterId}`, e);
                 }
 
-                return { step: 'COMPLETED', scene: 'COMPLETED', targetId: 'none', message: endMessage };
+                return { step: 'COMPLETED', scene: 'COMPLETED', targetId: '', message: endMessage };
             }
         }
 

@@ -31,7 +31,7 @@ export class CharacterStatsService {
   constructor(
     private prisma: PrismaService,
     private eventEmitter: EventEmitter2,
-  ) {}
+  ) { }
 
   // --- LÓGICA PARA GASTAR PONTOS ---
 
@@ -301,11 +301,11 @@ export class CharacterStatsService {
         },
       });
 
-      // 5. (Opcional) Emitir STATS TOTAIS (se a UI precisar deles)
-      // this.eventEmitter.emit('character.totalStats.updated', {
-      //   characterId: characterId,
-      //   totalStats: totalStats,
-      // });
+      // 5. Emitir STATS TOTAIS (necessário para UI mostrar bônus de itens)
+      this.eventEmitter.emit('character.totalStats.updated', {
+        characterId: characterId,
+        totalStats: totalStats,
+      });
 
       console.log(
         `[StatsService] Stats recalculados e emitidos para ${characterId}`,
@@ -316,6 +316,33 @@ export class CharacterStatsService {
         error,
       );
     }
+  }
+
+  /**
+   * Recupera totalmente o HP e Eco do personagem (Respawn/Descanso).
+   * @param characterId ID do personagem.
+   */
+  async recoverVitals(characterId: string): Promise<void> {
+    const { totalStats } = await this.calculateTotalStats(characterId);
+
+    const updatedChar = await this.prisma.character.update({
+      where: { id: characterId },
+      data: {
+        hp: totalStats.totalMaxHp,
+        eco: totalStats.totalMaxEco,
+      },
+    });
+
+    // Emitir eventos
+    this.eventEmitter.emit('character.vitals.updated', {
+      characterId: characterId,
+      vitals: {
+        hp: updatedChar.hp,
+        maxHp: totalStats.totalMaxHp,
+        eco: updatedChar.eco,
+        maxEco: totalStats.totalMaxEco,
+      },
+    });
   }
 
   private async getCharacterWithInventory(

@@ -1458,13 +1458,13 @@ export class BattleService {
           }
         }
 
-        // 4. Remover a Instância do NPC do Mundo (Morte)
-        // Se temos o ID da instância (definido no initializeCombat), deletamos ela.
+        // 4. [FIX] Kill Monster Instance
         if (combat.monsterInstanceId) {
-          await tx.nPCInstance.deleteMany({
-            where: { id: combat.monsterInstanceId }
+          await tx.nPCInstance.update({
+            where: { id: combat.monsterInstanceId },
+            data: { currentHp: 0 }
           });
-          console.log(`[BattleService] NPC Instance removida: ${combat.monsterInstanceId}`);
+          console.log(`[BattleService] NPC Instance ${combat.monsterInstanceId} marcado como morto (HP=0).`);
         }
 
         transactionSuccess = true;
@@ -1484,6 +1484,7 @@ export class BattleService {
         this.eventEmitter.emit('combat.win.stats', {
           playerId: playerId,
           newTotalXp: updatedChar.xp.toString(),
+          xpGained: xpGanho, // NOVO
           goldGained: goldGanho,
           newLevel:
             updatedChar.level > char.level ? updatedChar.level : undefined,
