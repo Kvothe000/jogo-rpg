@@ -155,7 +155,8 @@ export function SkillsPanel({ availableSkills, learnedSkills, currentEco, onLear
                                     <span style={styles.itemName}>⚡ {skill.name}</span>
                                     <div style={styles.itemMeta}>
                                         <span>Custo: {skill.ecoCost} ECO</span>
-                                        {/* <span>Nível: {skill.level}</span> -- Nível ainda não implementado no payload */}
+                                        <span style={{ marginLeft: '10px' }}>CD: {skill.cooldown > 0 ? `${skill.cooldown}T` : '-'}</span>
+                                        {/* <span>Nível: {skill.level}</span> -- Nível do "upgrade" da skill futuramente */}
                                     </div>
                                     <p style={styles.description}>{skill.description}</p>
                                     <div style={{ fontSize: '0.7em', color: '#666', marginTop: '5px' }}>
@@ -177,7 +178,10 @@ export function SkillsPanel({ availableSkills, learnedSkills, currentEco, onLear
                                     <span style={styles.itemName}>💾 {skill.name}</span>
                                     <div style={styles.itemMeta}>
                                         <span>Custo: {skill.ecoCost} ECO</span>
-                                        {/* <span style={{ color: 'var(--color-warning)' }}>Req. Nível: {skill.minLevel}</span> */}
+                                        <span style={{ marginLeft: '10px' }}>CD: {skill.cooldown > 0 ? `${skill.cooldown}T` : '-'}</span>
+                                        <span style={{ color: 'var(--color-warning)', marginLeft: 'auto' }}>
+                                            {skill.minLevel > 1 ? `Nv. ${skill.minLevel}` : ''}
+                                        </span>
                                     </div>
                                     <p style={styles.description}>{skill.description}</p>
                                     <button

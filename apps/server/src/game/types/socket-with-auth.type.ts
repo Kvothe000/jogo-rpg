@@ -21,6 +21,8 @@ export interface Skill {
   name: string;
   description: string;
   ecoCost: number;
+  minLevel: number;
+  cooldown: number;
   effectData: any;
   // Adicione outros campos se necessário
 }

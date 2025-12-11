@@ -218,7 +218,9 @@ model Skill {
   description String    @db.Text
   
   ecoCost     Int       @default(10)
-  
+  minLevel    Int       @default(1)
+  cooldown    Int       @default(0) // Cooldown em turnos
+
   // Efeitos da skill
   // Ex: { "damage": 20, "type": "fire", "statusEffect": "burning" }
   effectData  Json      @default("{}")

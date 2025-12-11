@@ -99,16 +99,68 @@ export class PrologueService {
 
         this.logger.log(`[handleChoice] Current State: ${currentState}`);
 
-        // --- CENA 1: Intro -> Glitch ---
+        // Helper safety check for usage below
+        const getAlignment = (c: any) => (c.prologueData as any)?.alignment || { citadel: 0, renegade: 0, neutral: 0 };
+
+        // --- CENA 1: Intro -> Anomaly ---
         if (currentState === 'SCENE_1_INTRO') {
-            if (choiceId === 'START_CALIBRATION') {
-                newState = 'SCENE_1_GLITCH';
+            // Aceita qualquer escolha inicial (Trabalhar/Explorar)
+            newState = 'SCENE_1_ANOMALY';
+
+            // Alignment
+            const currentData = (character.prologueData as any) || {};
+            const align = currentData.alignment || { citadel: 0, renegade: 0, neutral: 0 };
+
+            if (choiceId === 'WORK') align.citadel++;
+            if (choiceId === 'SLACK') align.renegade++;
+            if (choiceId === 'EXPLORE') align.neutral++;
+
+            await this.prisma.character.update({
+                where: { id: characterId },
+                data: { prologueState: newState, prologueData: { ...currentData, alignment: align } }
+            });
+            return this.buildPayloadForState(newState);
+        }
+
+        // --- CENA 1: Anomaly -> Glitch ---
+        else if (currentState === 'SCENE_1_ANOMALY') {
+            // Aceita qualquer reação (Reportar/Esconder)
+            newState = 'SCENE_1_GLITCH';
+
+            // Alignment
+            const currentData = (character.prologueData as any) || {};
+            const align = currentData.alignment || { citadel: 0, renegade: 0, neutral: 0 };
+
+            if (choiceId === 'REPORT') align.citadel += 2;
+            if (choiceId === 'HIDE') align.renegade += 2;
+            if (choiceId === 'TOUCH') align.neutral += 2;
+
+            await this.prisma.character.update({
+                where: { id: characterId },
+                data: { prologueState: newState, prologueData: { ...currentData, alignment: align } }
+            });
+            return this.buildPayloadForState(newState);
+        }
+
+        // --- CENA 1: Supervisor -> Confinement ---
+        else if (currentState === 'SCENE_1_SUPERVISOR') {
+            newState = 'SCENE_2_CONFINEMENT';
+        }
+
+        // --- CENA 2: Confinement -> Struggle ---
+        else if (currentState === 'SCENE_2_CONFINEMENT') {
+            if (choiceId === 'FORCE_DOOR') {
+                // Player tries to force door -> Fail -> Struggle State
+                newState = 'SCENE_2_STRUGGLE';
             }
         }
 
-        // --- CENA 1: Supervisor ---
-        else if (currentState === 'SCENE_1_SUPERVISOR') {
-            newState = 'SCENE_2_CONFINEMENT';
+        // --- CENA 2: Struggle -> Elara ---
+        else if (currentState === 'SCENE_2_STRUGGLE') {
+            if (choiceId === 'YELL') {
+                // Player yells -> Elara contacts
+                newState = 'SCENE_2_ELARA_CONTACT';
+            }
         }
 
         // --- CENA 2: Elara ---
@@ -198,9 +250,33 @@ export class PrologueService {
 
             if (choiceId === 'ENTER_PORTAL' || choiceId === 'CAUGHT_CITADEL') {
                 const currentData = (character.prologueData && typeof character.prologueData === 'object' && !Array.isArray(character.prologueData))
-                    ? character.prologueData as object
+                    ? character.prologueData as any
                     : {};
 
+                // --- ALIGNMENT REWARD CALC ---
+                const align = currentData.alignment || { citadel: 0, renegade: 0, neutral: 0 };
+                let rewardTrait = 'trait_balance'; // Default
+                let rewardMsg = '>> SINTONIA: NEUTRA. Você vê o código como ele é. [+10 Max Eco]';
+                let statUpdate = { maxEco: { increment: 10 } };
+
+                if (align.citadel > align.renegade && align.citadel > align.neutral) {
+                    rewardTrait = 'trait_order';
+                    rewardMsg = '>> SINTONIA: ORDEM. Sua lealdade blindou sua mente. [+2 Defesa]';
+                    statUpdate = { defense: { increment: 2 } } as any;
+                } else if (align.renegade > align.citadel && align.renegade > align.neutral) {
+                    rewardTrait = 'trait_chaos';
+                    rewardMsg = '>> SINTONIA: CAOS. Sua rebeldia afiou seus reflexos. [+2 Ataque]';
+                    statUpdate = { strength: { increment: 2 } } as any; // Using Strength as proxy for Attack
+                }
+
+                // Grant Trait (Keyword)
+                await this.prisma.characterPowerKeyword.upsert({
+                    where: { characterId_powerKeywordId: { characterId, powerKeywordId: rewardTrait } },
+                    create: { characterId, powerKeywordId: rewardTrait },
+                    update: {}
+                });
+
+                // Apply Stat Bonus & Finish
                 await this.prisma.character.update({
                     where: { id: characterId },
                     data: {
@@ -208,10 +284,16 @@ export class PrologueService {
                         mapId: targetRoom,
                         prologueData: {
                             ...currentData,
-                            ending: choiceId
-                        }
+                            ending: choiceId,
+                            finalAlignment: align,
+                            rewardTrait
+                        },
+                        ...statUpdate
                     }
                 });
+
+                // Append reward msg
+                endMessage += `\n\n${rewardMsg}`;
 
                 // Start First Quest
                 try {
@@ -256,10 +338,25 @@ export class PrologueService {
                 return {
                     scene: '1',
                     step: 'SCENE_1_INTRO',
-                    message: '>> INICIALIZANDO NEURAL LINK... OK\n>> ESTABELECENDO CONEXAO COM O NUCLEO... OK\n\nTarefa: Otimizar Fluxo de Dados 7-Alfa. Inicie a calibracao no Terminal Primario.',
+                    message: '>> SISTEMA OPERACIONAL CIDADELA v90.2 <<\n>> STATUS: Conectado. \n\nSua tarefa diária de processamento de dados espera. O código flui na tela interminavelmente.',
                     targetId: '',
                     dialogueOptions: [
-                        { id: 'START_CALIBRATION', text: '[INICIAR] Calibrar Sistema' }
+                        { id: 'WORK', text: '[OBEDECER] Iniciar calibração de rotina' },
+                        { id: 'EXPLORE', text: '[CURIOSO] Investigar logs de erro incomuns' },
+                        { id: 'SLACK', text: '[BURLAR] Tentar otimizar o trabalho para terminar cedo' }
+                    ]
+                };
+
+            case 'SCENE_1_ANOMALY':
+                return {
+                    scene: '1',
+                    step: 'SCENE_1_ANOMALY',
+                    message: '>> ERRO CRÍTICO: VIOLAÇÃO DE INTEGRIDADE. <<\n\nNúmeros começam a sangrar na tela. Uma linha de código pulsa com uma cor que não deveria existir: Dourado.',
+                    targetId: '',
+                    dialogueOptions: [
+                        { id: 'REPORT', text: '[REPORTAR] "Supervisor! Erro no terminal!"' },
+                        { id: 'TOUCH', text: '[TOCAR] Tentar interagir com o código dourado' },
+                        { id: 'HIDE', text: '[ESCONDER] Tentar fechar a janela antes que vejam' }
                     ]
                 };
 
@@ -290,8 +387,22 @@ export class PrologueService {
                 return {
                     scene: '2',
                     step: 'SCENE_2_CONFINEMENT',
-                    message: '>> INTERFACE BLOQUEADA. STATUS: Análise Compulsória Pendente. <<',
+                    message: '>> INTERFACE BLOQUEADA. STATUS: Análise Compulsória Pendente. <<\n\nVocê está trancado em uma cela de contenção de dados. As paredes pulsam com códigos de bloqueio.',
                     targetId: '',
+                    dialogueOptions: [
+                        { id: 'FORCE_DOOR', text: '[FORÇA] Tentar abrir a porta manualmente' }
+                    ]
+                };
+
+            case 'SCENE_2_STRUGGLE':
+                return {
+                    scene: '2',
+                    step: 'SCENE_2_STRUGGLE',
+                    message: 'A porta nem se move. Seus músculos (ou o que sobrou deles na simulação) queimam.\n\n>> ALERTA: Tentativa de fuga registrada. <<',
+                    targetId: '',
+                    dialogueOptions: [
+                        { id: 'YELL', text: '[GRITAR] "Ei! Vocês não podem me prender!"' }
+                    ]
                 };
 
             case 'SCENE_2_ELARA_CONTACT':

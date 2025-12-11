@@ -16,7 +16,7 @@ export interface AvailableSkill extends Skill {
 
 @Injectable()
 export class SkillService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   /**
    * Busca todas as skills que um personagem PODE aprender com base nas suas keywords atuais,
@@ -35,6 +35,7 @@ export class SkillService {
           // Keywords possuídas
           select: { powerKeywordId: true },
         },
+        level: true,
         skills: {
           // Skills aprendidas
           select: { skillId: true },
@@ -119,6 +120,7 @@ export class SkillService {
         where: { id: characterId },
         select: {
           powerKeywords: { select: { powerKeywordId: true } },
+          level: true,
           skills: { where: { skillId: skillId }, select: { skillId: true } }, // Verifica se já aprendeu
         },
       }),
@@ -155,6 +157,12 @@ export class SkillService {
     if (!hasAllKeywords) {
       throw new ConflictException(
         'Personagem não possui as Keywords necessárias para aprender esta skill.',
+      );
+    }
+
+    if (characterKeywordsData.level < skillToLearn.minLevel) {
+      throw new ConflictException(
+        `Nível insuficiente. Requer nível ${skillToLearn.minLevel}.`
       );
     }
 

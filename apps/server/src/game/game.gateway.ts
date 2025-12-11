@@ -764,7 +764,8 @@ export class GameGateway
 
       let dialogue = '"..." (Ele não parece querer conversar.)';
 
-      // 1. Guarda da Cidadela
+
+      // 1. Guarda da Cidadela (Special Context)
       if (npcInstance.template.id.includes('guard')) {
         console.log('[InteractNPC] Lógica: Guarda');
         if (prologueEnding === 'CAUGHT_CITADEL') {
@@ -772,20 +773,22 @@ export class GameGateway
         } else if (prologueEnding === 'ENTER_PORTAL') {
           dialogue = '"Você... como você tem acesso a este setor? IDENTIFIQUE-SE!"';
         } else {
-          dialogue = '"Mantenha a distância. A Ordem observa."';
+          // Fallback to DB dialogue or default
+          const dbDialogue = (npcInstance.template.stats as any)?.dialogue;
+          dialogue = dbDialogue || '"Mantenha a distância."';
         }
       }
-      // 2. Supervisor / Autoridade
-      else if (npcInstance.template.id.includes('supervisor')) {
-        console.log('[InteractNPC] Lógica: Supervisor');
-        dialogue = '"Anomalias detectadas. O sistema será purgado."';
-      }
-      // 3. Velho Escriba (Quest Giver)
+      // 2. Velho Escriba (Quest Giver - Special)
       else if (npcInstance.template.id === 'npc_template_old_mentor' || npcInstance.template.name.includes('Velho')) {
         console.log('[InteractNPC] Lógica: Velho Escriba');
         dialogue = '"Ah, um novo desperto... Eu sinto o Eco vibrando em você. O Arquiteto tem planos, mas primeiro... você precisa sobreviver."';
       }
-      // 4. Monstros / Outros
+      // 3. GENERIC DIALOGUE FROM DB (Supervisor, Merchant, Citizens)
+      else if ((npcInstance.template.stats as any)?.dialogue) {
+        console.log('[InteractNPC] Lógica: Genérica (DB)');
+        dialogue = `" ${(npcInstance.template.stats as any).dialogue} "`;
+      }
+      // 4. Hostile Default
       else if (npcInstance.template.isHostile) {
         console.log('[InteractNPC] Lógica: Hostil');
         dialogue = '"Grrr..." (A criatura te encara com hostilidade)';
@@ -1075,15 +1078,7 @@ export class GameGateway
       client.emit('prologueUpdate', payload);
 
       // --- RECUPERAÇÃO DE ESTADOS AUTOMÁTICOS (RELOAD/RECONNECT) ---
-      if (payload.step === 'SCENE_2_CONFINEMENT') {
-        setTimeout(async () => {
-          const followup = await this.prologueService.forceTransition(characterId, 'SCENE_2_ELARA_CONTACT');
-          if (followup) {
-            client.emit('prologueUpdate', followup);
-            if (client.data.user?.character) client.data.user.character.prologueState = followup.step;
-          }
-        }, 2000); // Recuperação mais rápida
-      }
+      // REMOVIDO: SCENE_2_CONFINEMENT agora requer interação manual.
 
       if (payload.step === 'SCENE_1_GLITCH') {
         setTimeout(async () => {

@@ -29,7 +29,10 @@ const KW_SOMBRA = 'kw_sombra';
 const KW_FOGO = 'kw_fogo';
 const KW_AGUA = 'kw_agua';
 const KW_LUZ = 'kw_luz';
-const KW_CURA = 'kwcura';
+const KW_CURA = 'ecokw_cura';
+const KW_TRAIT_ORDER = 'trait_order';
+const KW_TRAIT_CHAOS = 'trait_chaos';
+const KW_TRAIT_BALANCE = 'trait_balance';
 // --- FIM DOS IDs ---
 // --- IDs PARA SKILLS ---
 const SKILL_LAMINA_INCANDESCENTE = 'sk_lamina_incandescente';
@@ -252,12 +255,45 @@ async function main() {
     update: {},
     create: {
       id: KW_CURA,
-      name: 'CURA',
+      name: 'Eco de Cura',
       description: 'Eco da restauração. Associado à recuperação de vitalidade.',
-      rank: 'D', // Vamos fazer a Cura ser um pouco mais rara
+      rank: 'D',
     },
   });
-  console.log('Keywords iniciais criadas.');
+
+  // --- TRAITS (RECOMPENSAS DE ALINHAMENTO) ---
+  await prisma.powerKeyword.upsert({
+    where: { id: KW_TRAIT_ORDER },
+    update: {},
+    create: {
+      id: KW_TRAIT_ORDER,
+      name: 'Protocolo de Ordem',
+      description: 'Trait: Sua afinidade com a Cidadela concede resistência a danos. [+Defesa]',
+      rank: 'E',
+    },
+  });
+  await prisma.powerKeyword.upsert({
+    where: { id: KW_TRAIT_CHAOS },
+    update: {},
+    create: {
+      id: KW_TRAIT_CHAOS,
+      name: 'Instinto de Caos',
+      description: 'Trait: Sua rebeldia alimenta seus golpes. [+Ataque]',
+      rank: 'E',
+    },
+  });
+  await prisma.powerKeyword.upsert({
+    where: { id: KW_TRAIT_BALANCE },
+    update: {},
+    create: {
+      id: KW_TRAIT_BALANCE,
+      name: 'Sintonia Neutra',
+      description: 'Trait: Você vê as linhas do código. [+MaxEco]',
+      rank: 'E',
+    },
+  });
+
+  console.log('Keywords e Traits criados.');
 
   // --- 5. Criar Skills ---
   const skillsData = [
@@ -597,7 +633,11 @@ async function main() {
   // NPC Supervisor (Prólogo)
   await prisma.nPCTemplate.upsert({
     where: { id: NPC_TEMPLATE_SUPERVISOR },
-    update: {},
+    update: {
+      stats: {
+        dialogue: 'Anomalias detectadas. O sistema será purgado.',
+      },
+    },
     create: {
       id: NPC_TEMPLATE_SUPERVISOR,
       name: 'Supervisor',
@@ -606,6 +646,7 @@ async function main() {
       isHostile: false,
       rank: 'B', // É um oficial de alto escalão
       stats: {
+        dialogue: 'Anomalias detectadas. O sistema será purgado.',
         // Não é para combate, mas define sua importância
       },
       types: ['cidadela', 'humano', 'autoridade'],
@@ -618,6 +659,7 @@ async function main() {
     update: {
       rank: 'D',
       stats: {
+        dialogue: 'Mantenha a distância. A Ordem observa.',
         hp: 120,
         attack: 12,
         defense: 5,
